@@ -1,23 +1,13 @@
 {
-  "name": "company",
-  "version": "0.1.0",
+  "name": "company-hrms",
   "private": true,
+  "workspaces": ["apps/admin", "packages/*"],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.2.9",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.9",
-    "tailwindcss": "^4"
+    "dev": "npm run dev --workspace=apps/admin",
+    "build": "npm run build --workspace=apps/admin",
+    "lint": "npm run lint --workspace=apps/admin",
+    "typecheck": "npm run typecheck --workspace=apps/admin",
+    "test": "npm run test --workspace=apps/admin",
+    "seed:all": "npm run seed:all --workspace=apps/admin"
   }
 }

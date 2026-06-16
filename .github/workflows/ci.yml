@@ -1,0 +1,28 @@
+name: CI
+on:
+  pull_request:
+    branches: [main, develop]
+jobs:
+  admin:
+    name: Admin lint + typecheck + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --workspace=apps/admin --workspace=packages/types
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Test (stub — no real DB)
+        run: npm run test:ci
+        env:
+          MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          JWT_SECRET: test-secret-min-64-chars-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          JWT_REFRESH_SECRET: test-refresh-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          UPSTASH_REDIS_REST_URL: ${{ secrets.TEST_UPSTASH_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.TEST_UPSTASH_TOKEN }}

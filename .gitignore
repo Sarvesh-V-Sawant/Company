@@ -1,41 +1,39 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ── Next.js ──────────────────────────────────────────────────────────────────
+.next/
+out/
+apps/admin/.next/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
+# ── Node.js ──────────────────────────────────────────────────────────────────
+node_modules/
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# ── Environment (never commit real values) ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+apps/admin/.env.local
 
-# vercel
-.vercel
+# ── Flutter Firebase (per-environment — never commit) ─────────────────────────
+apps/mobile/android/app/google-services.json
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ── Flutter signing (never commit) ────────────────────────────────────────────
+apps/mobile/android/key.properties
+apps/mobile/android/app/release.jks
+apps/mobile/android/app/*.jks
+
+# ── Flutter environment (compile-time inject) ──────────────────────────────────
+apps/mobile/.env.dev.json
+apps/mobile/.env.prod.json
+
+# ── Flutter build ──────────────────────────────────────────────────────────────
+apps/mobile/build/
+apps/mobile/.dart_tool/
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+
+# ── Deployment docs (contain secrets vault location) ──────────────────────────
+DEPLOYMENT.md
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

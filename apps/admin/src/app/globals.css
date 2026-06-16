@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+  /* Design tokens — shadcn/ui init writes CSS variables here */
+}
+
+/* shadcn/ui writes @layer base { :root { ... } } here on init */

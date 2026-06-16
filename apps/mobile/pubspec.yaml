@@ -1,0 +1,38 @@
+name: company_mobile
+description: Company HRMS Employee App
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.0
+  riverpod_annotation: ^2.3.0
+  go_router: ^14.0.0
+  dio: ^5.4.0
+  flutter_secure_storage: ^9.2.0
+  hive_flutter: ^1.1.0
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+  geolocator: ^13.0.0
+  crypto: ^3.0.3
+  device_info_plus: ^10.1.0
+  uuid: ^4.4.0
+  intl: ^0.19.0
+  shimmer: ^3.0.0
+  cached_network_image: ^3.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.0
+  riverpod_generator: ^2.4.0
+  hive_generator: ^2.0.0
+  flutter_lints: ^5.0.0
+  mocktail: ^1.0.0
+
+flutter:
+  uses-material-design: true

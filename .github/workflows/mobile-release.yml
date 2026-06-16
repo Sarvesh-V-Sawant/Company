@@ -1,0 +1,37 @@
+name: Mobile Release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    name: Build APK + Firebase Distribution
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+      - name: Write prod env file
+        run: echo '${{ secrets.FLUTTER_ENV_PROD }}' > .env.prod.json
+      - name: Write google-services.json (production Firebase)
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICES_JSON_PROD }}' | base64 --decode \
+            > android/app/google-services.json
+      - name: Write signing key
+        run: |
+          echo '${{ secrets.ANDROID_KEYSTORE_BASE64 }}' | base64 --decode > android/app/release.jks
+          echo '${{ secrets.KEY_PROPERTIES }}' > android/key.properties
+      - run: flutter pub get
+      - run: flutter build apk --release --dart-define-from-file=.env.prod.json
+      - name: Distribute via Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: internal-testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotes: "Build from ${{ github.sha }}"
