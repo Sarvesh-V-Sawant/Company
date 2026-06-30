@@ -1,4 +1,1 @@
-// Phase implementation pending
-export function useAuth() {
-  throw new Error('Not implemented');
-}
+export { useAuth } from '@/contexts/AuthContext';

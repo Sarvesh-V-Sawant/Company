@@ -11,13 +11,19 @@ class SecureStorageService {
   static Future<void> delete(String key) => _storage.delete(key: key);
   static Future<void> deleteAll() => _storage.deleteAll();
 
-  static Future<void> saveTokens({required String accessToken, required String refreshToken}) async {
+  static Future<void> saveTokens({
+    required String accessToken,
+    required String refreshToken,
+    String? sessionId,
+  }) async {
     await write(StorageKeys.accessToken, accessToken);
     await write(StorageKeys.refreshToken, refreshToken);
+    if (sessionId != null) await write(StorageKeys.sessionId, sessionId);
   }
 
   static Future<void> clearSession() async {
     await delete(StorageKeys.accessToken);
     await delete(StorageKeys.refreshToken);
+    await delete(StorageKeys.sessionId);
   }
 }

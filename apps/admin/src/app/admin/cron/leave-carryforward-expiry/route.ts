@@ -1,6 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { formatInTimeZone } from 'date-fns-tz';
+import { LeaveBalanceService } from '@services/LeaveBalanceService';
+import { CompanySettings } from '@models/CompanySettings';
+import { SystemEvent } from '@models/SystemEvent';
+import { connectDB } from '@lib/db/connect';
+import { CRON_NAMES } from '@constants/cron-names';
+import type { ICompanySettings } from '@models/CompanySettings';
+import { assertCronAuth } from '@mw/cronGuard';
 
-// Manual admin trigger — auth handled by src/middleware.ts
-export async function POST(_request: NextRequest) {
-  return NextResponse.json({ success: true, jobName: 'leave-carryforward-expiry', triggeredAt: new Date().toISOString() });
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest) {
+  const authError = assertCronAuth(request);
+  if (authError) return authError;
+
+  await connectDB();
+
+  const settings = await CompanySettings.findById('company-settings').lean() as ICompanySettings | null;
+  const timezone = settings?.timezone ?? 'Asia/Kolkata';
+
+  const now        = new Date();
+  const dateString = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+
+  const existing = await SystemEvent.findOne({
+    eventType: CRON_NAMES.LEAVE_CARRYFORWARD_EXPIRY,
+    date:      dateString,
+    status:    'completed',
+  }).lean();
+
+  if (existing) {
+    return NextResponse.json({
+      success:  true,
+      jobName:  CRON_NAMES.LEAVE_CARRYFORWARD_EXPIRY,
+      skipped:  true,
+      reason:   'already-completed',
+      dateString,
+    });
+  }
+
+  const { processed } = await LeaveBalanceService.processCarryForwardExpiry(dateString);
+
+  await SystemEvent.create({
+    eventType:   CRON_NAMES.LEAVE_CARRYFORWARD_EXPIRY,
+    date:        dateString,
+    status:      'completed',
+    completedAt: now,
+    meta:        { processed },
+  });
+
+  return NextResponse.json({
+    success:     true,
+    jobName:     CRON_NAMES.LEAVE_CARRYFORWARD_EXPIRY,
+    triggeredAt: now.toISOString(),
+    dateString,
+    processed,
+  });
 }

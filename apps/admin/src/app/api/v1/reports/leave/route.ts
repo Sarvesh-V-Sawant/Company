@@ -1,3 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ZodError } from 'zod';
+import { LeaveReportQuerySchema } from '@validators/report';
+import { ReportService } from '@services/ReportService';
+import { AppError } from '@services/AuthService';
+import { getAuthUser, AuthError } from '@mw/requireAuth';
+import { assertRole } from '@mw/requireRole';
+import { apiError } from '@lib/utils/api-response';
 
-export async function GET(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 9'); }
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  let payload;
+  try {
+    payload = await getAuthUser(request);
+  } catch (err) {
+    if (err instanceof AuthError) return apiError(err.code, 'Unauthorized.', err.httpStatus);
+    throw err;
+  }
+
+  try {
+    assertRole(payload, 'admin');
+  } catch (err) {
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+
+  const sp = Object.fromEntries(request.nextUrl.searchParams.entries());
+  let query;
+  try {
+    query = LeaveReportQuerySchema.parse(sp);
+  } catch (err) {
+    if (err instanceof ZodError) return apiError('GEN_001', 'Validation failed.', 400);
+    throw err;
+  }
+
+  try {
+    const result = await ReportService.leaveReport(payload.userId, query);
+    return NextResponse.json({ success: true, ...result });
+  } catch (err) {
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+}

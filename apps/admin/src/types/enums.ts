@@ -12,6 +12,13 @@ export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'r
 
 export type RegularizationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
 
+export type RegularizationType =
+  | 'forgotCheckIn'
+  | 'forgotCheckOut'
+  | 'workAwayFromOffice'
+  | 'officialTravel'
+  | 'clientVisit';
+
 export type PayrollStatus = 'draft' | 'finalised';
 
 export type UserRole = 'admin' | 'employee';

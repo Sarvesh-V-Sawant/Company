@@ -1,6 +1,187 @@
+import mongoose from 'mongoose';
+import { connectDB } from '@lib/db/connect';
+import { AppError } from '@services/AuthService';
+import { CompanySettings } from '@models/CompanySettings';
+import { Holiday } from '@models/Holiday';
+import type { ICompanySettings } from '@models/CompanySettings';
+import type { IHoliday } from '@models/Holiday';
+import type {
+  UpdateCompanyInput,
+  UpdateShiftInput,
+  UpdateWorkingDaysInput,
+  UpdateGeofenceInput,
+  CreateHolidayInput,
+  UpdateLeaveTypeInput,
+  LeaveTypeCode,
+} from '@validators/settings';
+
+async function requireSettings(): Promise<ICompanySettings & { _id: string }> {
+  const s = await CompanySettings.findById('company-settings').lean() as (ICompanySettings & { _id: string }) | null;
+  if (!s) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+  return s;
+}
+
 export class SettingsService {
-  // Phase implementation pending
-  static async placeholder(): Promise<never> {
-    throw new Error('Not implemented');
+  static async getSettings() {
+    await connectDB();
+    return requireSettings();
+  }
+
+  static async updateCompany(data: UpdateCompanyInput) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.companyName                   !== undefined) $set.companyName                   = data.companyName;
+    if (data.timezone                      !== undefined) $set.timezone                      = data.timezone;
+    if (data.currency                      !== undefined) $set.currency                      = data.currency;
+    if (data.lateArrivalGraceMinutes       !== undefined) $set.lateArrivalGraceMinutes       = data.lateArrivalGraceMinutes;
+    if (data.leaveYearStartMonth           !== undefined) $set.leaveYearStartMonth           = data.leaveYearStartMonth;
+    if (data.regularizationLookbackDays    !== undefined) $set.regularizationLookbackDays    = data.regularizationLookbackDays;
+    if (data.payrollCutoffDay              !== undefined) $set.payrollCutoffDay              = data.payrollCutoffDay;
+    if (data.attendanceReminderEnabled     !== undefined) $set.attendanceReminderEnabled     = data.attendanceReminderEnabled;
+    if (data.attendanceReminderTime        !== undefined) $set.attendanceReminderTime        = data.attendanceReminderTime;
+    if (data.gpsAccuracyThresholdMeters    !== undefined) $set.gpsAccuracyThresholdMeters    = data.gpsAccuracyThresholdMeters;
+    if (data.checkinTimestampWindowMinutes !== undefined) $set.checkinTimestampWindowMinutes = data.checkinTimestampWindowMinutes;
+
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
+  static async updateShift(data: UpdateShiftInput) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.workStartTime                  !== undefined) $set.workStartTime                  = data.workStartTime;
+    if (data.workEndTime                    !== undefined) $set.workEndTime                    = data.workEndTime;
+    if (data.halfDayLateCheckInTime         !== undefined) $set.halfDayLateCheckInTime         = data.halfDayLateCheckInTime;
+    if (data.requiredDailyMinutes           !== undefined) $set.requiredDailyMinutes           = data.requiredDailyMinutes;
+    if (data.halfDayThresholdMinutes        !== undefined) $set.halfDayThresholdMinutes        = data.halfDayThresholdMinutes;
+    if (data.sessionAutoClosePaddingMinutes !== undefined) $set.sessionAutoClosePaddingMinutes = data.sessionAutoClosePaddingMinutes;
+
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
+  static async updateWorkingDays(data: UpdateWorkingDaysInput) {
+    await connectDB();
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set: { workingDays: data.workingDays } },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
+  static async updateGeofence(data: UpdateGeofenceInput) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.latitude     !== undefined) $set['geoFence.latitude']     = data.latitude;
+    if (data.longitude    !== undefined) $set['geoFence.longitude']    = data.longitude;
+    if (data.radiusMeters !== undefined) $set['geoFence.radiusMeters'] = data.radiusMeters;
+    if (data.isEnabled    !== undefined) $set['geoFence.isEnabled']    = data.isEnabled;
+
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
+  static async listHolidays(year?: number) {
+    await connectDB();
+    const filter: Record<string, unknown> = year ? { year } : {};
+    const holidays = await Holiday.find(filter)
+      .sort({ dateString: 1 })
+      .lean() as unknown as Array<IHoliday & { _id: mongoose.Types.ObjectId }>;
+    return holidays.map((h) => ({
+      id:          h._id.toHexString(),
+      dateString:  h.dateString,
+      name:        h.name,
+      description: h.description ?? null,
+      type:        h.type,
+      year:        h.year,
+      createdAt:   h.createdAt.toISOString(),
+    }));
+  }
+
+  static async createHoliday(data: CreateHolidayInput, createdBy: string) {
+    await connectDB();
+    const date = new Date(data.dateString);
+    const year = date.getUTCFullYear();
+    try {
+      const holiday = await Holiday.create({
+        date,
+        dateString: data.dateString,
+        name:       data.name,
+        description: data.description,
+        type:       data.type,
+        year,
+        createdBy:  new mongoose.Types.ObjectId(createdBy),
+      }) as IHoliday & { _id: mongoose.Types.ObjectId };
+      return {
+        id:          holiday._id.toHexString(),
+        dateString:  holiday.dateString,
+        name:        holiday.name,
+        description: holiday.description ?? null,
+        type:        holiday.type,
+        year:        holiday.year,
+        createdAt:   holiday.createdAt.toISOString(),
+      };
+    } catch (err) {
+      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: number }).code === 11000) {
+        throw new AppError('GEN_006', 409, 'A holiday already exists for this date.');
+      }
+      throw err;
+    }
+  }
+
+  static async deleteHoliday(id: string) {
+    await connectDB();
+    if (!mongoose.Types.ObjectId.isValid(id)) throw new AppError('GEN_002', 404, 'Holiday not found.');
+    const result = await Holiday.deleteOne({ _id: new mongoose.Types.ObjectId(id) });
+    if (result.deletedCount === 0) throw new AppError('GEN_002', 404, 'Holiday not found.');
+  }
+
+  static async getLeaveTypes() {
+    await connectDB();
+    const s = await requireSettings();
+    return s.leaveTypes;
+  }
+
+  static async updateLeaveType(code: LeaveTypeCode, data: UpdateLeaveTypeInput) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.annualAllocation !== undefined) $set[`leaveTypes.${code}.annualAllocation`] = data.annualAllocation;
+    if (data.encashable       !== undefined) $set[`leaveTypes.${code}.encashable`]       = data.encashable;
+    if (data.carryForward?.enabled      !== undefined) $set[`leaveTypes.${code}.carryForward.enabled`]      = data.carryForward.enabled;
+    if (data.carryForward?.maxDays      !== undefined) $set[`leaveTypes.${code}.carryForward.maxDays`]      = data.carryForward.maxDays;
+    if (data.carryForward?.expiryMonths !== undefined) $set[`leaveTypes.${code}.carryForward.expiryMonths`] = data.carryForward.expiryMonths;
+
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return (updated.leaveTypes as unknown as Record<string, unknown>)[code];
   }
 }

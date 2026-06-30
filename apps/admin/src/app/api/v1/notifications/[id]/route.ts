@@ -1,3 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiError } from '@lib/utils/api-response';
 
-export async function GET(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 8'); }
+export const dynamic = 'force-dynamic';
+
+export async function GET(_r: NextRequest): Promise<NextResponse> {
+  return apiError('GEN_004', 'Not implemented.', 501);
+}

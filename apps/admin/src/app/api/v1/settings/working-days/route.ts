@@ -1,4 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ZodError } from 'zod';
+import { UpdateWorkingDaysSchema } from '@validators/settings';
+import { SettingsService } from '@services/SettingsService';
+import { AppError } from '@services/AuthService';
+import { getAuthUser, AuthError } from '@mw/requireAuth';
+import { assertRole } from '@mw/requireRole';
+import { apiError, success } from '@lib/utils/api-response';
 
-export async function GET(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 2.5'); }
-export async function PATCH(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 10'); }
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  try {
+    const p = await getAuthUser(request);
+    assertRole(p, 'admin');
+  } catch (err) {
+    if (err instanceof AuthError) return apiError(err.code, 'Unauthorized.', err.httpStatus);
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+
+  try {
+    const s = await SettingsService.getSettings();
+    return success({ workingDays: s.workingDays }, 200);
+  } catch (err) {
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+}
+
+export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  try {
+    const p = await getAuthUser(request);
+    assertRole(p, 'admin');
+  } catch (err) {
+    if (err instanceof AuthError) return apiError(err.code, 'Unauthorized.', err.httpStatus);
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+
+  let body: unknown;
+  try { body = await request.json(); }
+  catch { return apiError('GEN_001', 'Invalid JSON body.', 400); }
+
+  let parsed;
+  try { parsed = UpdateWorkingDaysSchema.parse(body); }
+  catch (err) {
+    if (err instanceof ZodError) return apiError('GEN_001', err.errors[0]?.message ?? 'Validation failed.', 400);
+    throw err;
+  }
+
+  try {
+    const s = await SettingsService.updateWorkingDays(parsed);
+    return success({ workingDays: s.workingDays }, 200);
+  } catch (err) {
+    if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
+    throw err;
+  }
+}

@@ -5,10 +5,28 @@ export interface IGeoFenceConfig {
   latitude: number;
   longitude: number;
   radiusMeters: number;
+  isEnabled: boolean;
 }
 
-export interface ICompanySettings extends Document {
-  _id: string;
+export interface ICarryForwardConfig {
+  enabled: boolean;
+  maxDays: number;
+  expiryMonths: number;
+}
+
+export interface ILeaveTypeConfig {
+  annualAllocation: number;
+  carryForward: ICarryForwardConfig;
+  encashable: boolean;
+}
+
+export interface ILeaveTypesConfig {
+  paidLeave: ILeaveTypeConfig;
+  sickLeave: ILeaveTypeConfig;
+  casualLeave: ILeaveTypeConfig;
+}
+
+export interface ICompanySettings extends Document<string> {
   companyName: string;
   timezone: string;
   currency: string;
@@ -21,7 +39,11 @@ export interface ICompanySettings extends Document {
   halfDayThresholdMinutes: number;
   workingDays: WeekDay[];
   leaveYearStartMonth: number;
+  regularizationLookbackDays: number;
   geoFence: IGeoFenceConfig;
+  gpsAccuracyThresholdMeters: number;
+  checkinTimestampWindowMinutes: number;
+  leaveTypes: ILeaveTypesConfig;
   payrollCutoffDay: number;
   attendanceReminderEnabled: boolean;
   attendanceReminderTime: string;
@@ -41,10 +63,43 @@ const CompanySettingsSchema = new Schema<ICompanySettings>({
   halfDayThresholdMinutes: { type: Number, required: true, min: 60 },
   workingDays: [{ type: String }],
   leaveYearStartMonth: { type: Number, default: 1, min: 1, max: 12 },
+  regularizationLookbackDays: { type: Number, default: 7, min: 1 },
   geoFence: {
-    latitude: { type: Number, required: true },
-    longitude: { type: Number, required: true },
-    radiusMeters: { type: Number, required: true, min: 50 },
+    latitude:     { type: Number,  required: true },
+    longitude:    { type: Number,  required: true },
+    radiusMeters: { type: Number,  required: true, min: 50 },
+    isEnabled:    { type: Boolean, required: true, default: true },
+  },
+  gpsAccuracyThresholdMeters:    { type: Number, required: true, default: 100, min: 10 },
+  checkinTimestampWindowMinutes: { type: Number, required: true, default: 2,   min: 1  },
+  leaveTypes: {
+    paidLeave: {
+      annualAllocation: { type: Number, default: 12, min: 0 },
+      carryForward: {
+        enabled:      { type: Boolean, default: true },
+        maxDays:      { type: Number, default: 15, min: 0 },
+        expiryMonths: { type: Number, default: 3, min: 0 },
+      },
+      encashable: { type: Boolean, default: false },
+    },
+    sickLeave: {
+      annualAllocation: { type: Number, default: 12, min: 0 },
+      carryForward: {
+        enabled:      { type: Boolean, default: false },
+        maxDays:      { type: Number, default: 0, min: 0 },
+        expiryMonths: { type: Number, default: 0, min: 0 },
+      },
+      encashable: { type: Boolean, default: false },
+    },
+    casualLeave: {
+      annualAllocation: { type: Number, default: 12, min: 0 },
+      carryForward: {
+        enabled:      { type: Boolean, default: false },
+        maxDays:      { type: Number, default: 0, min: 0 },
+        expiryMonths: { type: Number, default: 0, min: 0 },
+      },
+      encashable: { type: Boolean, default: false },
+    },
   },
   payrollCutoffDay: { type: Number, default: 25, min: 1, max: 28 },
   attendanceReminderEnabled: { type: Boolean, default: true },

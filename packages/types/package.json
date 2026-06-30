@@ -1,7 +1,10 @@
 {
-  "name": "@company/types",
+  "name": "@genesis/types",
   "version": "0.1.0",
   "private": true,
   "main": "src/index.ts",
-  "types": "src/index.ts"
+  "types": "src/index.ts",
+  "dependencies": {
+    "mongodb": "^7.3.0"
+  }
 }

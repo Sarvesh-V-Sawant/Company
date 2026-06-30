@@ -1,3 +1,163 @@
+import type { DayStatus, LeaveStatus, RegularizationStatus, RegularizationType, PayrollStatus, UserRole, LeaveTypeCode } from './enums';
+
+export interface Employee {
+  id: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  role: UserRole;
+  isActive: boolean;
+  requiresPasswordChange: boolean;
+  monthlySalary?: number;
+  dateOfJoining: string;
+  dateOfLeaving?: string | null;
+  hasRegisteredDevice?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceRecord {
+  _id: string;
+  employeeId: string | Employee;
+  date: string;
+  status: DayStatus;
+  checkIn?: string;
+  checkOut?: string;
+  workHours?: number;
+  isRegularized: boolean;
+  createdAt: string;
+}
+
+export interface LeaveRequest {
+  _id: string;
+  employeeId: string | Employee;
+  leaveType: LeaveTypeCode;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  reviewedBy?: string | Employee;
+  reviewedAt?: string;
+  reviewRemark?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegularizationRequest {
+  _id: string;
+  employeeId: string | Employee;
+  date: string;
+  type: RegularizationType;
+  reason: string;
+  status: RegularizationStatus;
+  requestedCheckIn?: string;
+  requestedCheckOut?: string;
+  reviewedBy?: string | Employee;
+  reviewedAt?: string;
+  reviewRemark?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employeeId: string | Employee;
+  yearMonth: string;
+  status: PayrollStatus;
+  workingDays?: number;
+  presentDays: number;
+  absentDays: number;
+  leaveDays?: number;
+  halfDays?: number;
+  lopDays: number;
+  grossSalary: number;
+  netSalary: number;
+  deductions: number;
+  isStale?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Notification {
+  _id: string;
+  userId: string;
+  title: string;
+  body: string;
+  isRead: boolean;
+  type: string;
+  referenceId?: string;
+  createdAt: string;
+}
+
+export interface Settings {
+  company: {
+    name: string;
+    address?: string;
+    timezone: string;
+    currency: string;
+  };
+  workingDays: string[];
+  shift: {
+    startTime: string;
+    endTime: string;
+    gracePeriodMinutes: number;
+  };
+  geofence?: {
+    lat: number;
+    lng: number;
+    radiusMeters: number;
+    enabled: boolean;
+  };
+}
+
+export interface DeviceRequestItem {
+  _id: string;
+  userId: string;
+  email: string;
+  fingerprintHash: string;
+  deviceName: string;
+  manufacturer: string;
+  deviceModel: string;
+  androidVersion: string;
+  appVersion: string;
+  buildNumber: string;
+  timezone: string;
+  language: string;
+  screenResolution: string;
+  batteryLevel?: number;
+  requestIp: string;
+  platform: 'android' | 'ios';
+  status: 'pending' | 'approved' | 'rejected';
+  type: 'first_device' | 'replacement';
+  requestedAt: string;
+  expiresAt: string;
+  reviewedAt?: string;
+  approvalNote?: string;
+  rejectionReason?: string;
+  requestCount: number;
+}
+
+export interface RegisteredDeviceItem {
+  fingerprintHash: string;
+  registeredAt: string;
+  deviceInfo: string;
+  platform: 'android' | 'ios';
+}
+
+export interface DeviceHistoryItem {
+  fingerprintHash: string;
+  deviceName: string;
+  platform: 'android' | 'ios';
+  registeredAt: string;
+  revokedAt?: string;
+  revokedReason: 'manual_revocation' | 'replacement' | 'admin_reset';
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

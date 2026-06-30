@@ -32,5 +32,6 @@ export const PAY_ERRORS = {
   PAY_001: 'Payroll already finalised',
   PAY_002: 'Payroll not found',
   PAY_003: 'Payroll compute in progress',
-  PAY_004: 'Manual deduction requires remark',
+  PAY_004: 'Payroll not finalised',
+  PAY_005: 'Payroll export format not supported',
 } as const;

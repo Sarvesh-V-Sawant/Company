@@ -9,7 +9,7 @@ export interface GeoPoint {
   longitude: number;
 }
 
-function haversineMeters(a: GeoPoint, b: GeoPoint): number {
+export function haversineMeters(a: GeoPoint, b: GeoPoint): number {
   const R = 6371000;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;

@@ -1,5 +1,5 @@
 {
-  "name": "company-hrms",
+  "name": "genesis-hrms",
   "private": true,
   "workspaces": ["apps/admin", "packages/*"],
   "scripts": {

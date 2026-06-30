@@ -1,0 +1,113 @@
+import 'dart:io';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:dio/dio.dart';
+import '../../../../core/constants/api_endpoints.dart';
+import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/storage/secure_storage.dart';
+
+class FcmService {
+  final Dio _dio;
+  FcmService(this._dio);
+
+  static final _localNotifications = FlutterLocalNotificationsPlugin();
+  static const _channelId = 'high_importance_channel';
+
+  Future<void> initialize() async {
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _localNotifications.initialize(
+      const InitializationSettings(android: androidInit),
+    );
+
+    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+  }
+
+  Future<String?> getToken() => FirebaseMessaging.instance.getToken();
+
+  Future<void> registerToken() async {
+    final token = await getToken();
+    if (token == null) return;
+    await _postToken(token);
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      await _postToken(newToken);
+    });
+  }
+
+  Future<void> _postToken(String token) async {
+    // Spec 9.4: POST /api/v1/notifications/fcm-token { token, deviceId, platform }
+    final deviceId = await SecureStorageService.read(StorageKeys.deviceHash) ?? '';
+    try {
+      await _dio.post(ApiEndpoints.fcmToken, data: {
+        'token': token,
+        'deviceId': deviceId,
+        'platform': Platform.isAndroid ? 'android' : 'ios',
+      });
+    } catch (_) {
+      // Non-fatal — retry on next launch
+    }
+  }
+
+  Future<void> clearToken() async {
+    await FirebaseMessaging.instance.deleteToken();
+  }
+
+  Future<NotificationSettings> requestPermission() =>
+      FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+  Future<AuthorizationStatus> getPermissionStatus() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    return settings.authorizationStatus;
+  }
+
+  void _handleForegroundMessage(RemoteMessage message) {
+    final notification = message.notification;
+    if (notification == null) return;
+    _localNotifications.show(
+      notification.hashCode,
+      notification.title,
+      notification.body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          'High Importance Notifications',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
+
+  void _handleMessageOpenedApp(RemoteMessage message) {
+    _routeFromMessage(message);
+  }
+
+  static Future<RemoteMessage?> getInitialMessage() =>
+      FirebaseMessaging.instance.getInitialMessage();
+
+  static String? routeFromMessage(RemoteMessage message) =>
+      _routeFromMessage(message);
+
+  static String? _routeFromMessage(RemoteMessage message) {
+    final data = message.data;
+    final type = data['type'] as String?;
+    final id = data['referenceId'] as String?;
+    switch (type) {
+      case 'leave_approved':
+      case 'leave_rejected':
+        return id != null ? '/leave/$id' : '/leave';
+      case 'reg_approved':
+      case 'reg_rejected':
+        return id != null ? '/regularization/$id' : '/regularization';
+      case 'attendance_reminder':
+        return '/home';
+      default:
+        final notifId = data['notificationId'] as String?;
+        return notifId != null ? '/notifications/$notifId' : '/notifications';
+    }
+  }
+}

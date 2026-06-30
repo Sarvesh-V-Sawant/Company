@@ -1,0 +1,8 @@
+{
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/admin/cron/session-auto-close",        "schedule": "0 18 * * *"      },
+    { "path": "/admin/cron/leave-year-allocation",     "schedule": "35 18 28-31 * *" },
+    { "path": "/admin/cron/leave-carryforward-expiry", "schedule": "35 18 28-31 * *" }
+  ]
+}

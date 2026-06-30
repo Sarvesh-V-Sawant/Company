@@ -1,4 +1,0 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function GET(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 7'); }
-export async function PATCH(_r: NextRequest): Promise<NextResponse> { throw new Error('Not implemented — Phase 7'); }
