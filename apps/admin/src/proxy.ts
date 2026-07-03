@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/password-reset/request',
   '/api/v1/auth/password-reset/confirm',
+  '/api/v1/auth/device-request',
 ];
 
 const PASSWORD_CHANGE_ALLOWED = [

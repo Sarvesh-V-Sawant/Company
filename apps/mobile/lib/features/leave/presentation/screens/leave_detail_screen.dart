@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/leave_provider.dart';
 
@@ -16,7 +17,7 @@ class LeaveDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Leave Request')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => const AppErrorWidget(message: 'Could not load leave details. Go back and try again.'),
         data: (leave) {
           final fmt = DateFormat('dd MMM yyyy');
           return SingleChildScrollView(

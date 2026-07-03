@@ -20,7 +20,7 @@ class DailyDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(date != null ? DateFormat('EEE, d MMMM yyyy').format(date) : dateStr)),
       body: histAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => const Center(child: Text('Could not load details. Go back and try again.', style: TextStyle(color: Colors.grey))),
         data: (records) {
           final rec = records.isNotEmpty ? records.first : null;
           return SingleChildScrollView(
@@ -61,11 +61,18 @@ class DailyDetailScreen extends ConsumerWidget {
                       const Text('No regularization for this date.', style: TextStyle(color: Colors.grey)),
                     ]))),
                   const SizedBox(height: 16),
-                  if (_canRegularize(dateStr))
-                    OutlinedButton(
-                      onPressed: () => context.push('${RouteNames.regularizationCreate}?date=$dateStr'),
-                      child: const Text('Apply Regularization'),
-                    ),
+                  if (!rec.isRegularized && _canRegularize(dateStr)) ...[
+                    if (rec.sessions.isNotEmpty)
+                      OutlinedButton(
+                        onPressed: () => context.push('${RouteNames.regularizationCreate}?date=$dateStr'),
+                        child: const Text('Apply Regularization'),
+                      )
+                    else if (rec.status == 'absent')
+                      OutlinedButton(
+                        onPressed: () => context.push(RouteNames.leaveApply),
+                        child: const Text('Apply Leave'),
+                      ),
+                  ],
                 ] else
                   const Center(child: Text('No attendance record for this date.')),
               ],

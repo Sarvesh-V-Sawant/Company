@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/models/attendance.dart';
 
@@ -7,36 +8,57 @@ class AttendanceRemoteSource {
   AttendanceRemoteSource(this._dio);
 
   Future<TodayAttendance> getToday() async {
-    final r = await _dio.get(ApiEndpoints.attendanceToday);
-    final data = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-    return TodayAttendance.fromJson(data);
+    // /attendance/today is admin-only. /attendance/status is employee-safe.
+    final r = await _dio.get(ApiEndpoints.attendanceStatus);
+    final raw = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    final summary = raw['todaySummary'] as Map<String, dynamic>? ?? {};
+    final currentSession = raw['currentSession'] as Map<String, dynamic>?;
+    final rawSessions = summary['sessions'] as List<dynamic>? ?? [];
+    return TodayAttendance.fromJson({
+      'date': raw['todayDateString'] ?? '',
+      'status': summary['status'] ?? 'absent',
+      'isCheckedIn': raw['isCheckedIn'] ?? false,
+      'currentSessionStart': currentSession?['checkInTimestamp'],
+      'sessions': rawSessions.map((s) {
+        final m = s as Map<String, dynamic>;
+        return {
+          'checkIn': m['checkInTimestamp'],
+          'checkOut': m['checkOutTimestamp'],
+          'durationMinutes': m['durationMinutes'],
+        };
+      }).toList(),
+      'totalMinutesToday': summary['totalMinutes'] ?? 0,
+    });
   }
 
   Future<TodayAttendance> checkIn({required double lat, required double lng, required double accuracy, required String nonce}) async {
-    final r = await _dio.post(ApiEndpoints.checkIn, data: {
+    await _dio.post(ApiEndpoints.checkIn, data: {
       'latitude': lat,
       'longitude': lng,
       'accuracy': accuracy,
       'nonce': nonce,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     });
-    final data = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-    return TodayAttendance.fromJson(data);
+    return getToday();
   }
 
   Future<TodayAttendance> checkOut() async {
-    final r = await _dio.post(ApiEndpoints.checkOut, data: {
+    await _dio.post(ApiEndpoints.checkOut, data: {
+      'nonce': const Uuid().v4(),
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     });
-    final data = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-    return TodayAttendance.fromJson(data);
+    return getToday();
   }
 
   Future<List<AttendanceRecord>> getHistory({String? startDate, String? endDate, int page = 1, int limit = 30}) async {
-    final params = <String, dynamic>{'page': page, 'limit': limit};
-    if (startDate != null) params['startDate'] = startDate;
-    if (endDate != null) params['endDate'] = endDate;
-    final r = await _dio.get(ApiEndpoints.attendanceEmployee('me'), queryParameters: params);
+    // /attendance/[employeeId] is admin-only. /attendance/history uses JWT userId.
+    // History endpoint requires startDate and endDate; default to last 30 days.
+    final now = DateTime.now();
+    final end = endDate ?? '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final startFallback = now.subtract(const Duration(days: 29));
+    final start = startDate ?? '${startFallback.year}-${startFallback.month.toString().padLeft(2, '0')}-${startFallback.day.toString().padLeft(2, '0')}';
+    final params = <String, dynamic>{'startDate': start, 'endDate': end, 'page': page, 'limit': limit};
+    final r = await _dio.get(ApiEndpoints.attendanceHistory, queryParameters: params);
     final raw = (r.data as Map<String, dynamic>)['data'] as List<dynamic>;
     return raw.map((e) => AttendanceRecord.fromJson(e as Map<String, dynamic>)).toList();
   }

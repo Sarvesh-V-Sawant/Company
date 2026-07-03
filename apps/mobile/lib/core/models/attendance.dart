@@ -7,8 +7,8 @@ class AttendanceSession {
 
   factory AttendanceSession.fromJson(Map<String, dynamic> json) {
     return AttendanceSession(
-      checkIn: json['checkIn'] as String?,
-      checkOut: json['checkOut'] as String?,
+      checkIn: json['checkIn'] as String? ?? json['checkInTimestamp'] as String?,
+      checkOut: json['checkOut'] as String? ?? json['checkOutTimestamp'] as String?,
       durationMinutes: json['durationMinutes'] as int?,
     );
   }
@@ -71,9 +71,10 @@ class AttendanceRecord {
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
     return AttendanceRecord(
-      id: json['_id'] as String? ?? '',
+      id: json['_id'] as String? ?? json['id'] as String? ?? '',
       employeeId: _extractId(json['employeeId']),
-      date: json['date'] as String? ?? '',
+      // history endpoint returns dateString; admin endpoint returns date
+      date: json['date'] as String? ?? json['dateString'] as String? ?? '',
       status: json['status'] as String? ?? 'absent',
       checkIn: json['checkIn'] as String?,
       checkOut: json['checkOut'] as String?,

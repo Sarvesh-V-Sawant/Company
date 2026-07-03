@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/models/leave.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../providers/leave_provider.dart';
 
 class LeaveScreen extends ConsumerStatefulWidget {
@@ -48,7 +49,7 @@ class _BalanceTab extends ConsumerWidget {
     final async = ref.watch(leaveBalanceProvider);
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => AppErrorWidget(message: 'Could not load leave balance. Check your connection.', onRetry: () => ref.refresh(leaveBalanceProvider.future)),
       data: (balances) {
         if (balances.isEmpty) return const Center(child: Text('No leave balance data.'));
         return RefreshIndicator(
@@ -116,7 +117,7 @@ class _HistoryTab extends ConsumerWidget {
     final async = ref.watch(leaveHistoryProvider(null));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (_, __) => AppErrorWidget(message: 'Could not load leave history. Check your connection.', onRetry: () => ref.refresh(leaveHistoryProvider(null).future)),
       data: (leaves) {
         if (leaves.isEmpty) return const Center(child: Text('No leave requests.'));
         return RefreshIndicator(

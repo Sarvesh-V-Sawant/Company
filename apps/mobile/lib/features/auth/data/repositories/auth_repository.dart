@@ -1,5 +1,6 @@
 import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:dio/dio.dart';
 import 'dart:convert';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/models/user.dart';
@@ -42,7 +43,18 @@ class AuthRepository {
 
     // ignore: avoid_print
     print('[DIAG][REPO] calling _source.login()');
-    final result = await _source.login(email: email, password: password, deviceFingerprint: fingerprint);
+    late final Map<String, dynamic> result;
+    try {
+      result = await _source.login(email: email, password: password, deviceFingerprint: fingerprint);
+    } on DioException catch (e) {
+      // Dio throws on non-2xx; extract error body so callers get typed exceptions.
+      final body = e.response?.data as Map<String, dynamic>?;
+      final error = body?['error'] as Map<String, dynamic>? ?? {};
+      final code = error['code'] as String? ?? 'NETWORK_ERROR';
+      final message = error['message'] as String? ?? 'Login failed';
+      if (code == 'AUTH_004' || code == 'AUTH_005') throw DeviceMismatchException(code: code);
+      throw AuthException(code: code, message: message);
+    }
     // ignore: avoid_print
     print('[DIAG][REPO] _source.login() returned. success=${result['success']}  keys=${result.keys.toList()}');
 

@@ -64,16 +64,21 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   let res = await fetch(path, { ...options, headers, credentials: 'include' });
 
   if (res.status === 401 && path !== '/api/v1/auth/refresh') {
-    const ok = await tryRefresh();
-    if (ok) {
-      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-      res = await fetch(path, { ...options, headers, credentials: 'include' });
-    }
-    if (!ok || res.status === 401) {
-      accessToken = null;
-      clearSessionCredentials();
-      onSessionExpired?.();
-      throw new Error('SESSION_EXPIRED');
+    // Only treat 401 as session expiry when an authenticated session exists.
+    // Without a session (e.g. login attempt with wrong credentials) the 401 JSON
+    // must be returned so the caller can surface the correct error code.
+    if (_refreshToken && _sessionId) {
+      const ok = await tryRefresh();
+      if (ok) {
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+        res = await fetch(path, { ...options, headers, credentials: 'include' });
+      }
+      if (!ok || res.status === 401) {
+        accessToken = null;
+        clearSessionCredentials();
+        onSessionExpired?.();
+        throw new Error('SESSION_EXPIRED');
+      }
     }
   }
 

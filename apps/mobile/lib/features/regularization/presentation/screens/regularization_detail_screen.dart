@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/models/regularization.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/regularization_provider.dart';
 
@@ -17,7 +18,7 @@ class RegularizationDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Regularization')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => const AppErrorWidget(message: 'Could not load details. Go back and try again.'),
         data: (data) {
           final reg = data as RegularizationRequest;
           final fmt = DateFormat('dd MMM yyyy');

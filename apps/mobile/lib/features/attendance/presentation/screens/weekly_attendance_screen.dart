@@ -64,7 +64,7 @@ class _WeeklyAttendanceScreenState extends ConsumerState<WeeklyAttendanceScreen>
           ),
           histAsync.when(
             loading: () => const Expanded(child: Center(child: CircularProgressIndicator())),
-            error: (e, _) => Expanded(child: Center(child: Text('Error: $e'))),
+            error: (_, __) => const Expanded(child: Center(child: Text('Could not load attendance. Pull to refresh.', style: TextStyle(color: Colors.grey)))),
             data: (records) {
               final byDate = {for (final r in records) r.date.substring(0, 10): r};
               return Expanded(
@@ -140,6 +140,7 @@ class _DayCell extends StatelessWidget {
     'present' => ('✓', const Color(0xFF16A34A)),
     'half_day' || 'half-day' => ('½', const Color(0xFFD97706)),
     'absent' => ('✗', const Color(0xFFDC2626)),
+    'checked-in' => ('▶', const Color(0xFF2563EB)),
     'leave' => ('L', const Color(0xFF2563EB)),
     'holiday' => ('H', const Color(0xFF7C3AED)),
     'weekend' => ('—', const Color(0xFF9CA3AF)),

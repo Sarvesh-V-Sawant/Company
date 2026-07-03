@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/models/regularization.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/regularization_provider.dart';
 
@@ -20,7 +21,7 @@ class RegularizationScreen extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => AppErrorWidget(message: 'Could not load regularizations. Check your connection.', onRetry: () => ref.refresh(regularizationHistoryProvider(null).future)),
         data: (regs) {
           final list = regs as List<RegularizationRequest>;
           if (list.isEmpty) return const Center(child: Text('No regularization requests.'));

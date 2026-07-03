@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/api_endpoints.dart';
+import '../../../../core/di/providers.dart';
 import '../../../../core/models/attendance.dart';
+import '../../../../core/models/notification.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../../../attendance/presentation/providers/attendance_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../notifications/data/services/shift_reminder_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,11 +21,17 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
+  ({String shiftStart, String shiftEnd, int requiredDailyMinutes, int gracePeriodMinutes})? _shiftSettings;
+  final _reminderService = ShiftReminderService();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reconcile());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _reconcile();
+      await _loadShiftSettings();
+    });
   }
 
   @override
@@ -31,11 +41,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   @override
   void dispose() {
+    _reminderService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _reconcile() => ref.read(attendanceProvider.notifier).reconcile();
+  Future<void> _reconcile() async {
+    try {
+      await ref.read(attendanceProvider.notifier).reconcile();
+    } catch (_) {
+      // reconcile() captures errors into AsyncValue.error — this is a safety net
+      // so pull-to-refresh and lifecycle callbacks never throw past Flutter's boundary
+    }
+  }
+
+  Future<void> _loadShiftSettings() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final r = await dio.get(ApiEndpoints.attendanceShift);
+      final data = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      if (mounted) {
+        setState(() {
+          _shiftSettings = (
+            shiftStart: data['shiftStart'] as String? ?? '09:00',
+            shiftEnd: data['shiftEnd'] as String? ?? '18:00',
+            requiredDailyMinutes: data['requiredDailyMinutes'] as int? ?? CompanySettings.defaults.requiredDailyMinutes,
+            gracePeriodMinutes: data['gracePeriodMinutes'] as int? ?? 0,
+          );
+        });
+        _updateReminders(ref.read(checkInStateProvider));
+      }
+    } catch (_) {
+      // Non-fatal — reminders unavailable if shift settings unreachable
+    }
+  }
+
+  void _updateReminders(CheckInState state) {
+    final settings = _shiftSettings;
+    if (settings == null) return;
+
+    if (state == CheckInState.checkedIn) {
+      _reminderService.cancelCheckinReminder();
+      final endParts = settings.shiftEnd.split(':');
+      if (endParts.length == 2) {
+        final endHH = int.tryParse(endParts[0]) ?? 18;
+        final endMM = int.tryParse(endParts[1]) ?? 0;
+        _reminderService.scheduleCheckoutReminder(shiftEndHH: endHH, shiftEndMM: endMM);
+      }
+    } else if (state == CheckInState.idle || state == CheckInState.checkedOutPartial) {
+      _reminderService.cancelCheckoutReminder();
+      final parts = settings.shiftStart.split(':');
+      if (parts.length == 2) {
+        final hh = int.tryParse(parts[0]) ?? 9;
+        final mm = int.tryParse(parts[1]) ?? 0;
+        _reminderService.scheduleCheckinReminder(shiftStartHH: hh, shiftStartMM: mm);
+      }
+    } else if (state == CheckInState.checkedOutComplete) {
+      _reminderService.cancelAll();
+    }
+  }
 
   Future<void> _handleCheckIn() async {
     final notifier = ref.read(attendanceProvider.notifier);
@@ -94,7 +158,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final today = ref.read(attendanceProvider).value;
     if (today?.isCheckedIn == true) {
       final elapsed = _calcElapsedMinutes(today);
-      final remaining = 540 - elapsed; // default 9h
+      final requiredMinutes = _shiftSettings?.requiredDailyMinutes ?? CompanySettings.defaults.requiredDailyMinutes;
+      final remaining = requiredMinutes - elapsed;
       if (remaining > 120) {
         final confirm = await showDialog<bool>(
           context: context,
@@ -102,8 +167,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             title: const Text('Checking Out Early?'),
             content: Text('You have ${_formatMinutes(remaining)} remaining today.'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Working')),
-              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Check Out')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep Working'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Check Out'),
+              ),
             ],
           ),
         );
@@ -114,7 +185,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     try {
       await ref.read(attendanceProvider.notifier).checkOut();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-out failed. Please try again.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-out failed. Please try again.')));
+      }
     }
   }
 
@@ -142,7 +215,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final attendanceAsync = ref.watch(attendanceProvider);
-    final notifier = ref.read(attendanceProvider.notifier);
+    final checkInState = ref.watch(checkInStateProvider);
+
+    // React to checkInState changes for reminder scheduling
+    ref.listen<CheckInState>(checkInStateProvider, (_, next) => _updateReminders(next));
+
     final now = DateTime.now();
     final hour = now.hour;
     final greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -172,17 +249,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               // Status card
               attendanceAsync.when(
                 loading: () => const _ShimmerStatusCard(),
-                error: (_, __) => const _ErrorStatusCard(),
-                data: (today) => _StatusCard(today: today, checkInState: notifier.checkInState, elapsedMinutes: _calcElapsedMinutes(today)),
+                error: (_, __) => _ErrorStatusCard(onRetry: () => ref.read(attendanceProvider.notifier).reconcile()),
+                data: (today) => _StatusCard(
+                  today: today,
+                  checkInState: checkInState,
+                  elapsedMinutes: _calcElapsedMinutes(today),
+                  requiredDailyMinutes: _shiftSettings?.requiredDailyMinutes ?? CompanySettings.defaults.requiredDailyMinutes,
+                  shiftStart: _shiftSettings?.shiftStart,
+                  shiftEnd: _shiftSettings?.shiftEnd,
+                  gracePeriodMinutes: _shiftSettings?.gracePeriodMinutes,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
+
+              // Elapsed timer — prominent above action button
+              attendanceAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (today) => _AttendanceTimerWidget(
+                  sessionStart: today?.currentSessionStart,
+                  isActive: checkInState == CheckInState.checkedIn,
+                ),
+              ),
 
               // Action button
               attendanceAsync.when(
-                loading: () => ElevatedButton(onPressed: null, child: const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
+                loading: () => ElevatedButton(
+                  onPressed: null,
+                  child: const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                ),
                 error: (_, __) => const SizedBox.shrink(),
-                data: (today) => _ActionButton(
-                  checkInState: notifier.checkInState,
+                data: (_) => _ActionButton(
+                  checkInState: checkInState,
                   onCheckIn: _handleCheckIn,
                   onCheckOut: _handleCheckOut,
                 ),
@@ -200,7 +298,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ),
 
               const SizedBox(height: 20),
-              // Quick actions
               Text('Quick Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Row(children: [
@@ -210,8 +307,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ]),
 
               const SizedBox(height: 20),
-              // This month summary
-              _MonthSummary(today: attendanceAsync.value),
+              _MonthSummary(today: attendanceAsync.asData?.value),
             ],
           ),
         ),
@@ -226,11 +322,103 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 }
 
+// ─── Attendance timer widget ────────────────────────────────────────────────
+
+class _AttendanceTimerWidget extends StatefulWidget {
+  const _AttendanceTimerWidget({required this.sessionStart, required this.isActive});
+  final String? sessionStart;
+  final bool isActive;
+
+  @override
+  State<_AttendanceTimerWidget> createState() => _AttendanceTimerWidgetState();
+}
+
+class _AttendanceTimerWidgetState extends State<_AttendanceTimerWidget> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isActive) _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(_AttendanceTimerWidget old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive && !old.isActive) _startTimer();
+    if (!widget.isActive && old.isActive) _stopTimer();
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  Duration _elapsed() {
+    if (widget.sessionStart == null) return Duration.zero;
+    final start = DateTime.tryParse(widget.sessionStart!)?.toLocal();
+    if (start == null) return Duration.zero;
+    final d = DateTime.now().difference(start);
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours.toString().padLeft(2, '0');
+    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h : $m : $s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed = _elapsed();
+    final active = widget.isActive && widget.sessionStart != null;
+
+    return Column(
+      children: [
+        Text(
+          active ? 'Current session' : 'Session time',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          active ? _fmt(elapsed) : '00 : 00 : 00',
+          style: TextStyle(
+            fontSize: 38,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 3,
+            color: active ? const Color(0xFF16A34A) : Colors.grey[300],
+            fontFamily: 'monospace',
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+// ─── Status card ─────────────────────────────────────────────────────────────
+
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.today, required this.checkInState, required this.elapsedMinutes});
+  const _StatusCard({required this.today, required this.checkInState, required this.elapsedMinutes, required this.requiredDailyMinutes, this.shiftStart, this.shiftEnd, this.gracePeriodMinutes});
   final TodayAttendance? today;
   final CheckInState checkInState;
   final int elapsedMinutes;
+  final int requiredDailyMinutes;
+  final String? shiftStart;
+  final String? shiftEnd;
+  final int? gracePeriodMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -252,8 +440,12 @@ class _StatusCard extends StatelessWidget {
                   Text('Since ${_formatTime(today!.currentSessionStart!)}', style: const TextStyle(color: Colors.grey)),
                 ],
                 const Divider(height: 16),
-                Text('${_fmtMin(elapsedMinutes)} elapsed', style: const TextStyle(fontSize: 15)),
-                Text('${_fmtMin(540 - elapsedMinutes)} remaining', style: TextStyle(fontSize: 14, color: elapsedMinutes >= 510 ? const Color(0xFF16A34A) : const Color(0xFFD97706))),
+                if (elapsedMinutes < requiredDailyMinutes)
+                  Text('${_fmtMin(requiredDailyMinutes - elapsedMinutes)} remaining', style: TextStyle(fontSize: 14, color: elapsedMinutes >= requiredDailyMinutes - 30 ? const Color(0xFF16A34A) : const Color(0xFFD97706)))
+                else ...[
+                  const Text('Shift completed', style: TextStyle(fontSize: 14, color: Color(0xFF16A34A))),
+                  Text('Overtime: ${_fmtMin(elapsedMinutes - requiredDailyMinutes)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
               ],
             ),
           CheckInState.checkedOutComplete => Column(
@@ -276,7 +468,7 @@ class _StatusCard extends StatelessWidget {
                   const Text('Partial Day', style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFFD97706))),
                 ]),
                 Text('${_fmtMin(today?.totalMinutesToday ?? 0)} recorded'),
-                Text('${_fmtMin(540 - (today?.totalMinutesToday ?? 0))} remaining', style: const TextStyle(color: Color(0xFFD97706))),
+                Text('${_fmtMin(requiredDailyMinutes - (today?.totalMinutesToday ?? 0))} remaining', style: const TextStyle(color: Color(0xFFD97706))),
               ],
             ),
           _ => Column(
@@ -287,7 +479,13 @@ class _StatusCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text('Not Checked In', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[600])),
                 ]),
-                Text('Required: 9h 0m today', style: TextStyle(color: Colors.grey[500])),
+                if (shiftStart != null && shiftEnd != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Shift: $shiftStart–$shiftEnd', style: TextStyle(color: Colors.grey[500])),
+                ],
+                Text('Required: ${_fmtMin(requiredDailyMinutes)} today', style: TextStyle(color: Colors.grey[500])),
+                if (shiftStart != null && gracePeriodMinutes != null && gracePeriodMinutes! > 0)
+                  Text('On-time until: ${_onTimeDeadline(shiftStart!, gracePeriodMinutes!)}', style: TextStyle(color: Colors.grey[500])),
               ],
             ),
         },
@@ -296,15 +494,25 @@ class _StatusCard extends StatelessWidget {
   }
 
   String _fmtMin(int m) => '${m ~/ 60}h ${m % 60}m';
+
+  String _onTimeDeadline(String shiftStart, int graceMinutes) {
+    try {
+      final parts = shiftStart.split(':');
+      final totalMin = int.parse(parts[0]) * 60 + int.parse(parts[1]) + graceMinutes;
+      final h = totalMin ~/ 60;
+      final m = totalMin % 60;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    } catch (_) { return shiftStart; }
+  }
   String _formatTime(String iso) {
     try {
       final dt = DateTime.parse(iso).toLocal();
-      final h = dt.hour.toString().padLeft(2, '0');
-      final m = dt.minute.toString().padLeft(2, '0');
-      return '$h:$m';
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) { return iso; }
   }
 }
+
+// ─── Action button ────────────────────────────────────────────────────────────
 
 class _ActionButton extends StatelessWidget {
   const _ActionButton({required this.checkInState, required this.onCheckIn, required this.onCheckOut});
@@ -330,6 +538,8 @@ class _ActionButton extends StatelessWidget {
     };
   }
 }
+
+// ─── Sessions list ────────────────────────────────────────────────────────────
 
 class _TodaysSessions extends StatelessWidget {
   const _TodaysSessions({required this.sessions});
@@ -368,6 +578,8 @@ class _TodaysSessions extends StatelessWidget {
     } catch (_) { return iso; }
   }
 }
+
+// ─── Month summary ────────────────────────────────────────────────────────────
 
 class _MonthSummary extends StatelessWidget {
   const _MonthSummary({this.today});
@@ -413,6 +625,8 @@ class _SummaryItem extends StatelessWidget {
   }
 }
 
+// ─── Shimmer / error cards ────────────────────────────────────────────────────
+
 class _ShimmerStatusCard extends StatelessWidget {
   const _ShimmerStatusCard();
   @override
@@ -420,10 +634,27 @@ class _ShimmerStatusCard extends StatelessWidget {
 }
 
 class _ErrorStatusCard extends StatelessWidget {
-  const _ErrorStatusCard();
+  const _ErrorStatusCard({this.onRetry});
+  final VoidCallback? onRetry;
   @override
-  Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16), child: Text("Couldn't load data. Pull to retry.", textAlign: TextAlign.center)));
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Unable to load attendance.\nCheck your connection and try again.', textAlign: TextAlign.center),
+          if (onRetry != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh, size: 16), label: const Text('Retry')),
+          ],
+        ],
+      ),
+    ),
+  );
 }
+
+// ─── GPS error sheet ──────────────────────────────────────────────────────────
 
 enum _GpsError { permissionDenied, disabled, lowAccuracy, outsideGeofence, noNetwork }
 

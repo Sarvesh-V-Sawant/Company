@@ -87,6 +87,7 @@ function formatDayRecord(
   settings: { requiredDailyMinutes: number },
   timezone: string,
 ) {
+  const hasActiveSession = sessions.some((s) => s.checkOutTimestamp === null);
   const overtimeMinutes = Math.max(0, day.totalMinutes - settings.requiredDailyMinutes);
   const zonedDate = toZonedTime(day.date, timezone);
   const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -94,7 +95,7 @@ function formatDayRecord(
   return {
     dateString: day.dateString,
     dayOfWeek: dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1),
-    status: day.status,
+    status: hasActiveSession ? 'checked-in' : day.status,
     totalMinutes: day.totalMinutes,
     overtimeMinutes,
     isLateArrival: day.isLateArrival,
@@ -466,8 +467,8 @@ export class AttendanceService {
           }
         : null,
       todaySummary: {
-        totalMinutes: totalMinutes + runningMinutes,
-        status: day?.status ?? 'absent',
+        totalMinutes,
+        status: isCheckedIn ? 'checked-in' : (day?.status ?? 'absent'),
         sessions,
       },
     };

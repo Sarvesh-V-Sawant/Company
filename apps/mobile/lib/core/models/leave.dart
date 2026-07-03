@@ -63,17 +63,20 @@ class LeaveRequest {
 
   factory LeaveRequest.fromJson(Map<String, dynamic> json) {
     return LeaveRequest(
-      id: json['_id'] as String? ?? '',
+      // backend returns 'id'; some legacy paths use '_id'
+      id: json['id'] as String? ?? json['_id'] as String? ?? '',
       employeeId: _extractId(json['employeeId']),
       leaveType: json['leaveType'] as String? ?? '',
       startDate: json['startDate'] as String? ?? '',
       endDate: json['endDate'] as String? ?? '',
-      days: json['days'] as int? ?? 1,
+      // backend returns 'totalDays'; mobile schema uses 'days'
+      days: (json['totalDays'] as int?) ?? json['days'] as int? ?? 1,
       reason: json['reason'] as String? ?? '',
       status: json['status'] as String? ?? 'pending',
       reviewedBy: _extractIdNullable(json['reviewedBy']),
       reviewedAt: json['reviewedAt'] as String?,
-      reviewRemark: json['reviewRemark'] as String?,
+      // backend returns 'reviewRemarks'; mobile schema uses 'reviewRemark'
+      reviewRemark: json['reviewRemark'] as String? ?? json['reviewRemarks'] as String?,
       createdAt: json['createdAt'] as String? ?? '',
     );
   }

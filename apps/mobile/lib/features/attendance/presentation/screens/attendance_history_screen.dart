@@ -50,7 +50,7 @@ class _AttendanceHistoryScreenState extends ConsumerState<AttendanceHistoryScree
           Expanded(
             child: histAsync.when(
               loading: () => ListView.builder(itemCount: 8, itemBuilder: (_, __) => const ShimmerListTile()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              error: (_, __) => const Center(child: Text('Could not load history. Pull to refresh.', style: TextStyle(color: Colors.grey))),
               data: (records) {
                 if (records.isEmpty) return const Center(child: Text('No records for this month.'));
                 return RefreshIndicator(

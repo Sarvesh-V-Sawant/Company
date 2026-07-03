@@ -56,27 +56,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<LoginResult> login({required String email, required String password}) async {
-    // PHASE 15.18 DIAGNOSTIC
-    // ignore: avoid_print
-    print('[DIAG][NOTIF] login() called  state.isLoading=${state.isLoading}');
     state = state.copyWith(isLoading: true, error: null);
-    // ignore: avoid_print
-    print('[DIAG][NOTIF] state → isLoading=true, calling _repo.login()');
     try {
       final result = await _repo.login(email: email, password: password);
-      // ignore: avoid_print
-      print('[DIAG][NOTIF] _repo.login() success. requiresPasswordChange=${result.requiresPasswordChange}');
       state = AuthState(user: result.user, isInitialized: true);
-      // ignore: avoid_print
-      print('[DIAG][NOTIF] state → user set, isAuthenticated=${state.isAuthenticated}');
       // Register FCM token after successful login (non-blocking)
       _fcm.registerToken();
       return result;
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[DIAG][NOTIF] login() caught: ${e.runtimeType} $e');
-      // ignore: avoid_print
-      print('[DIAG][NOTIF] stack:\n$stack');
+    } catch (e, _) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
     }

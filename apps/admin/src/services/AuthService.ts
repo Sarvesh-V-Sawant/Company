@@ -143,7 +143,7 @@ export class AuthService {
       employeeId: user._id,
       refreshTokenHash,
       deviceFingerprint: deviceFingerprint ?? null,
-      deviceInfo: userAgent.slice(0, 500),
+      deviceInfo: (userAgent || 'unknown').slice(0, 500),
       platform: detectPlatform(userAgent),
       expiresAt,
       absoluteExpiresAt,

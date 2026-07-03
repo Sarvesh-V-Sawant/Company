@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/models/notification.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/notifications_provider.dart';
@@ -28,7 +29,7 @@ class NotificationsScreen extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => ListView.builder(itemCount: 8, itemBuilder: (_, __) => const ShimmerListTile()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => AppErrorWidget(message: 'Could not load notifications. Check your connection.', onRetry: () => ref.refresh(notificationsProvider.future)),
         data: (notifications) {
           if (notifications.isEmpty) return const Center(child: Text('No notifications.'));
           return RefreshIndicator(

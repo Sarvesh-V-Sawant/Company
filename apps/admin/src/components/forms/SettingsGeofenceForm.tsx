@@ -17,11 +17,18 @@ const schema = z.object({
 });
 type Form = z.infer<typeof schema>;
 
+const GEO_ERRORS: Record<number, string> = {
+  1: 'Location permission denied. Allow location access in your browser and try again.',
+  2: 'Location unavailable. Check your network or device GPS.',
+  3: 'Location request timed out. Try again.',
+};
+
 interface Props { settings?: Settings; onSuccess?: () => void }
 
 export default function SettingsGeofenceForm({ settings, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, reset, control, formState: { errors } } = useForm<Form>({
+  const [locating, setLocating] = useState(false);
+  const { register, handleSubmit, reset, control, setValue, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: settings?.geofence ?? { enabled: false, lat: 0, lng: 0, radiusMeters: 200 },
   });
@@ -29,6 +36,27 @@ export default function SettingsGeofenceForm({ settings, onSuccess }: Props) {
   useEffect(() => { if (settings?.geofence) reset(settings.geofence); }, [settings, reset]);
 
   const enabled = useWatch({ control, name: 'enabled' });
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Your browser does not support geolocation');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setValue('lat', pos.coords.latitude, { shouldValidate: true });
+        setValue('lng', pos.coords.longitude, { shouldValidate: true });
+        setLocating(false);
+        toast.success(`Location detected (±${Math.round(pos.coords.accuracy)} m accuracy)`);
+      },
+      (err) => {
+        setLocating(false);
+        toast.error(GEO_ERRORS[err.code] ?? 'Could not retrieve location');
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  };
 
   const onSubmit = async (data: Form) => {
     setSubmitting(true);
@@ -48,6 +76,18 @@ export default function SettingsGeofenceForm({ settings, onSuccess }: Props) {
       </label>
       {enabled && (
         <>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Office Location</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              loading={locating}
+              onClick={handleUseCurrentLocation}
+            >
+              {locating ? 'Detecting…' : 'Use Current Location'}
+            </Button>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>

@@ -14,6 +14,9 @@ class ApiEndpoints {
   static const String checkIn = '/api/v1/attendance/checkin';
   static const String checkOut = '/api/v1/attendance/checkout';
   static const String attendanceToday = '/api/v1/attendance/today';
+  static const String attendanceStatus = '/api/v1/attendance/status';
+  static const String attendanceHistory = '/api/v1/attendance/history';
+  static const String attendanceShift = '/api/v1/attendance/shift';
   static String attendanceEmployee(String employeeId) => '/api/v1/attendance/$employeeId';
 
   static const String leaves = '/api/v1/leaves';

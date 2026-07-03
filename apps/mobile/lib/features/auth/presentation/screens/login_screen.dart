@@ -40,72 +40,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    // PHASE 15.18 DIAGNOSTIC
-    // ignore: avoid_print
-    print('[DIAG][UI] Sign In button pressed');
     final emailError = _validateEmail(_emailCtrl.text.trim());
     final passError = _validatePassword(_passwordCtrl.text);
     if (emailError != null || passError != null) {
-      // ignore: avoid_print
-      print('[DIAG][UI] Validation failed: emailError=$emailError  passError=$passError');
       setState(() => _errorMessage = emailError ?? passError);
       return;
     }
 
-    // ignore: avoid_print
-    print('[DIAG][UI] Validation passed. Setting _loading=true');
     setState(() { _loading = true; _errorMessage = null; });
 
     try {
-      // ignore: avoid_print
-      print('[DIAG][UI] Calling authProvider.notifier.login()');
       final result = await ref.read(authProvider.notifier).login(
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
       );
-      // ignore: avoid_print
-      print('[DIAG][UI] authProvider.login() returned. requiresPasswordChange=${result.requiresPasswordChange}');
 
       if (!mounted) return;
 
       if (result.requiresPasswordChange) {
-        // ignore: avoid_print
-        print('[DIAG][NAV] navigating to ${RouteNames.changePassword}');
         context.go(RouteNames.changePassword);
       } else {
-        // ignore: avoid_print
-        print('[DIAG][NAV] navigating to ${RouteNames.home}');
         context.go(RouteNames.home);
       }
     } on DeviceMismatchException catch (e) {
-      // ignore: avoid_print
-      print('[DIAG][UI] DeviceMismatchException: code=${e.code}');
       if (!mounted) return;
       // AUTH_004 = DEVICE_NOT_REGISTERED; AUTH_005 = DEVICE_FINGERPRINT_MISMATCH
       if (e.code == 'AUTH_004') {
-        // ignore: avoid_print
-        print('[DIAG][NAV] navigating to ${RouteNames.deviceNotRegistered}');
         context.go(RouteNames.deviceNotRegistered, extra: {'email': _emailCtrl.text.trim()});
       } else {
-        // ignore: avoid_print
-        print('[DIAG][NAV] navigating to ${RouteNames.deviceMismatch}');
         context.go(RouteNames.deviceMismatch, extra: {'email': _emailCtrl.text.trim()});
       }
     } on AuthException catch (e) {
-      // ignore: avoid_print
-      print('[DIAG][UI] AuthException: code=${e.code}  message=${e.message}');
       if (!mounted) return;
       setState(() => _errorMessage = _mapErrorCode(e.code));
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[DIAG][UI] catch(_) generic exception: ${e.runtimeType} $e');
-      // ignore: avoid_print
-      print('[DIAG][UI] stack:\n$stack');
+    } catch (e, _) {
       if (!mounted) return;
       setState(() => _errorMessage = 'No connection. Check your network.');
     } finally {
-      // ignore: avoid_print
-      print('[DIAG][UI] finally block. mounted=$mounted');
       if (mounted) setState(() => _loading = false);
     }
   }

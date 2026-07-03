@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/payroll_provider.dart';
 
@@ -14,7 +15,7 @@ class PayslipDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Payslip')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) => const AppErrorWidget(message: 'Could not load payslip. Go back and try again.'),
         data: (p) => SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

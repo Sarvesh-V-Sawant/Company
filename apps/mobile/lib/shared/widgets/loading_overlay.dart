@@ -92,6 +92,7 @@ class StatusChip extends StatelessWidget {
   (Color, Color, String) _resolve(String status) => switch (status.toLowerCase()) {
     'present' => (const Color(0xFFDCFCE7), const Color(0xFF15803D), 'Present'),
     'absent' => (const Color(0xFFFEE2E2), const Color(0xFFB91C1C), 'Absent'),
+    'checked-in' => (const Color(0xFFDBEAFE), const Color(0xFF1D4ED8), 'Active'),
     'half_day' || 'half-day' => (const Color(0xFFFEF3C7), const Color(0xFFB45309), 'Half Day'),
     'leave' => (const Color(0xFFDBEAFE), const Color(0xFF1D4ED8), 'Leave'),
     'holiday' => (const Color(0xFFEDE9FE), const Color(0xFF6D28D9), 'Holiday'),

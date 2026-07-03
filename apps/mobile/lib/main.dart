@@ -21,41 +21,52 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 void main() async {
-  // PHASE 15.18 DIAGNOSTIC — remove after runtime trace captured
   runZonedGuarded(() async {
     await _bootstrap();
   }, (error, stack) {
     // ignore: avoid_print
-    print('[DIAG][ZONE] Unhandled error: $error');
-    // ignore: avoid_print
-    print('[DIAG][ZONE] Stack:\n$stack');
+    print('[ERR][ZONE] $error');
   });
 }
 
 Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // PHASE 15.18 DIAGNOSTIC
+  // Log Flutter framework errors without re-presenting them.
   FlutterError.onError = (details) {
     // ignore: avoid_print
-    print('[DIAG][FLUTTER_ERROR] ${details.exceptionAsString()}');
-    // ignore: avoid_print
-    print('[DIAG][FLUTTER_ERROR] Stack:\n${details.stack}');
-    FlutterError.dumpErrorToConsole(details);
+    print('[ERR][FLUTTER] ${details.exceptionAsString()}');
   };
 
+  // Return true = we handled it; prevents Flutter's default red debug overlay
+  // for unhandled async errors that escape try/catch in timer or notification callbacks.
   PlatformDispatcher.instance.onError = (error, stack) {
     // ignore: avoid_print
-    print('[DIAG][PLATFORM_ERROR] $error');
-    // ignore: avoid_print
-    print('[DIAG][PLATFORM_ERROR] Stack:\n$stack');
-    return false;
+    print('[ERR][PLATFORM] $error');
+    return true;
   };
 
-  // ignore: avoid_print
-  print('[DIAG][BOOT] API_BASE_URL env = ${const String.fromEnvironment('API_BASE_URL', defaultValue: '<not-set>')}');
-  // ignore: avoid_print
-  print('[DIAG][BOOT] ENVIRONMENT    = ${const String.fromEnvironment('ENVIRONMENT', defaultValue: '<not-set>')}');
+  // Safety net: replace any widget-subtree ErrorWidget with a friendly card.
+  // Prevents raw DioException / SocketException text from ever reaching the user.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    // ignore: avoid_print
+    print('[ERR][WIDGET] ${details.exceptionAsString()}');
+    return const Material(
+      color: Colors.transparent,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Something went wrong. Please try again.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  };
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await Hive.initFlutter();

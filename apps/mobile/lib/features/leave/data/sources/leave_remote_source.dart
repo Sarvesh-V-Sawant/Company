@@ -8,8 +8,27 @@ class LeaveRemoteSource {
 
   Future<List<LeaveBalance>> getBalance() async {
     final r = await _dio.get(ApiEndpoints.leaveBalance);
-    final data = (r.data as Map<String, dynamic>)['data'] as List<dynamic>;
-    return data.map((e) => LeaveBalance.fromJson(e as Map<String, dynamic>)).toList();
+    // Backend returns data as { paidLeave, sickLeave, casualLeave, asOf } — a Map, not a List.
+    final data = (r.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    const labels = {'paidLeave': 'Paid Leave', 'sickLeave': 'Sick Leave', 'casualLeave': 'Casual Leave'};
+    final result = <LeaveBalance>[];
+    for (final key in const ['paidLeave', 'sickLeave', 'casualLeave']) {
+      final bal = data[key] as Map<String, dynamic>?;
+      if (bal == null) continue;
+      final currentYear = (bal['currentYear'] as num?)?.toInt() ?? 0;
+      final cf = (bal['carriedForward'] as num?)?.toInt() ?? 0;
+      final total = (bal['total'] as num?)?.toInt() ?? (currentYear + cf);
+      result.add(LeaveBalance(
+        leaveType: key,
+        leaveTypeName: labels[key] ?? key,
+        entitled: total,
+        used: 0,
+        remaining: total,
+        carriedForward: cf,
+        cfExpiryDate: bal['carryForwardExpiry'] as String?,
+      ));
+    }
+    return result;
   }
 
   Future<List<LeaveRequest>> getHistory({String? status, int page = 1, int limit = 20}) async {

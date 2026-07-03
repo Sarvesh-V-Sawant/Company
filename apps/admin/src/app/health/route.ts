@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { redis } from '@lib/redis/client';
+import { connectDB } from '@lib/db/connect';
 
 export async function GET() {
-  const db = mongoose.connection.readyState === 1 ? 'ok' : 'disconnected';
+  let db: string;
+  try {
+    await connectDB();
+    db = mongoose.connection.readyState === 1 ? 'ok' : 'disconnected';
+  } catch {
+    db = 'disconnected';
+  }
 
   let redisStatus = 'ok';
   try {
