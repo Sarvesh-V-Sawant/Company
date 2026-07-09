@@ -34,15 +34,8 @@ class AuthRepository {
   }
 
   Future<LoginResult> login({required String email, required String password}) async {
-    // PHASE 15.18 DIAGNOSTIC
-    // ignore: avoid_print
-    print('[DIAG][REPO] login() entry');
     final fingerprint = await getOrCreateDeviceFingerprint();
-    // ignore: avoid_print
-    print('[DIAG][REPO] fingerprint obtained: ${fingerprint.substring(0, 8)}... (${fingerprint.length} chars)');
 
-    // ignore: avoid_print
-    print('[DIAG][REPO] calling _source.login()');
     late final Map<String, dynamic> result;
     try {
       result = await _source.login(email: email, password: password, deviceFingerprint: fingerprint);
@@ -55,18 +48,12 @@ class AuthRepository {
       if (code == 'AUTH_004' || code == 'AUTH_005') throw DeviceMismatchException(code: code);
       throw AuthException(code: code, message: message);
     }
-    // ignore: avoid_print
-    print('[DIAG][REPO] _source.login() returned. success=${result['success']}  keys=${result.keys.toList()}');
 
     if (result['success'] != true) {
       final error = result['error'] as Map<String, dynamic>? ?? {};
       final code = error['code'] as String? ?? 'UNKNOWN';
-      // ignore: avoid_print
-      print('[DIAG][REPO] login failed: code=$code  message=${error['message']}');
       // AUTH_004 = DEVICE_NOT_REGISTERED; AUTH_005 = DEVICE_FINGERPRINT_MISMATCH
-      if (code == 'AUTH_004' || code == 'AUTH_005') {
-        throw DeviceMismatchException(code: code);
-      }
+      if (code == 'AUTH_004' || code == 'AUTH_005') throw DeviceMismatchException(code: code);
       throw AuthException(code: code, message: error['message'] as String? ?? 'Login failed');
     }
 
@@ -76,23 +63,15 @@ class AuthRepository {
     final sessionId = data['sessionId'] as String? ?? '';
     final requiresPasswordChange = data['requiresPasswordChange'] as bool? ??
         (data['employee'] as Map<String, dynamic>?)?['requiresPasswordChange'] as bool? ?? false;
-    // ignore: avoid_print
-    print('[DIAG][REPO] login success. requiresPasswordChange=$requiresPasswordChange  sessionId=${sessionId.substring(0, 8)}...');
 
-    // ignore: avoid_print
-    print('[DIAG][REPO] writing tokens to SecureStorage');
     await SecureStorageService.saveTokens(
       accessToken: accessToken,
       refreshToken: refreshToken,
       sessionId: sessionId,
     );
-    // ignore: avoid_print
-    print('[DIAG][REPO] tokens saved');
 
     final employee = data['employee'] as Map<String, dynamic>? ?? data['user'] as Map<String, dynamic>? ?? {};
     final user = User.fromJson(employee);
-    // ignore: avoid_print
-    print('[DIAG][REPO] LoginResult built. user.id=${user.id}');
     return LoginResult(user: user, requiresPasswordChange: requiresPasswordChange);
   }
 

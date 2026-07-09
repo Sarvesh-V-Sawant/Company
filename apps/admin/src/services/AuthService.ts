@@ -235,40 +235,25 @@ export class AuthService {
   }
 
   static async requestPasswordReset(email: string, ip: string): Promise<void> {
-    // PHASE 15.19 DIAGNOSTIC — remove after runtime trace captured
-    console.log(`[DIAG][FP-SVC] requestPasswordReset() entry  email=${email}  ip=${ip}`);
     await connectDB();
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      console.log('[DIAG][FP-SVC] User not found → returning early (enumeration prevention)');
-      return;
-    }
-    console.log(`[DIAG][FP-SVC] User found: userId=${(user._id as import('mongoose').Types.ObjectId).toHexString()}  firstName=${user.firstName}`);
+    if (!user) return;
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-    console.log(`[DIAG][FP-SVC] Token generated. tokenHash=${tokenHash.slice(0, 8)}...  expiresAt=${expiresAt.toISOString()}`);
 
-    const tokenDoc = await PasswordResetToken.create({
+    await PasswordResetToken.create({
       userId: user._id,
       email: user.email,
       tokenHash,
       expiresAt,
       ipAddress: ip,
     });
-    console.log(`[DIAG][FP-SVC] PasswordResetToken saved. _id=${(tokenDoc._id as import('mongoose').Types.ObjectId).toHexString()}`);
 
     const appUrl = getAppUrl();
     const resetUrl = `${appUrl}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
-    console.log(`[DIAG][FP-SVC] NEXT_PUBLIC_APP_URL env = ${process.env.NEXT_PUBLIC_APP_URL ?? '<not-set>'}`);
-    console.log(`[DIAG][FP-SVC] appUrl = ${appUrl}`);
-    console.log(`[DIAG][FP-SVC] resetUrl = ${resetUrl}`);
-
-    console.log(`[DIAG][FP-SVC] Brevo sender: ${process.env.BREVO_SENDER_EMAIL ?? '<not-set>'} / ${process.env.BREVO_SENDER_NAME ?? '<not-set>'}`);
-    console.log(`[DIAG][FP-SVC] Brevo API key present: ${!!process.env.BREVO_API_KEY}  length: ${process.env.BREVO_API_KEY?.length ?? 0}`);
-    console.log(`[DIAG][FP-SVC] Calling sendEmail() to ${user.email}`);
 
     try {
       await sendEmail({
@@ -276,9 +261,8 @@ export class AuthService {
         subject: 'Reset your Genesis Workforce password',
         htmlContent: passwordResetEmailHtml(user.firstName, resetUrl),
       });
-      console.log('[DIAG][FP-SVC] sendEmail() completed without exception');
-    } catch (err) {
-      console.error('[DIAG][FP-SVC] sendEmail() threw (swallowed):', err);
+    } catch {
+      // Non-fatal — enumeration prevention requires always returning OK
     }
   }
 

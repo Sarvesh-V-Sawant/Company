@@ -1,8 +1,8 @@
 # Phase 17 — Field Tracking, Approvals & Admin Controls (Plan)
 
-**Status:** Phase 17.00 Slice 1 — ✅ Manually verified (browser UI toggle ON/save confirmed by operator 2026-07-06). Slice 2 — ✅ Code + mobile runtime verified. Phase 17.01 — ✅ PASS (all gaps closed 2026-07-06 in session 2: fresh Work Away submission confirmed, notification delivery confirmed, routing confirmed).  
+**Status:** Phase 17.00 Slice 1 — ✅ Manually verified (browser UI toggle ON/save confirmed by operator 2026-07-06). Slice 2 — ✅ Code + mobile runtime verified. Phase 17.01 — ✅ PASS (all gaps closed 2026-07-09: FCM shade confirmed, background-tap routing fix confirmed, notification → regularization detail routing ✅).  
 **Date drafted:** 2026-07-06  
-**Last updated:** 2026-07-06 (Phase 17.01 PASS — all runtime paths confirmed)  
+**Last updated:** 2026-07-09 (Pre-push cleanup DONE — all [DIAG] logs removed from 8 files; TSC ✅ flutter analyze ✅ flutter build ✅)  
 **Prerequisite:** Phase 16.01/16.02 complete. Pre-push blockers (DIAG prints, secrets) resolved before any of this ships.
 
 ---
@@ -488,9 +488,23 @@ void _handleMessageOpenedApp(RemoteMessage message) {
 
 **Note:** Cold-start path (`initialNotificationRouteProvider` → `splash_screen.dart`) was already correct and is unchanged.
 
-### Tap routing runtime result
+### Tap routing runtime result (2026-07-09)
 
-Shade confirmed ✅. Tap automation attempted via ADB coordinate injection. First tap missed (hit WhatsApp card at y=617). Second tap at y=351 opened Genesis app but landed on Home screen (before bug fix). Bug identified, fix applied. APK rebuilt with fix — not re-tapped (requires physical test after install).
+| Step | Result |
+|---|---|
+| APK (with routing fix) installed | ✅ `adb install -r` success |
+| App launched — Home screen confirmed | ✅ "Good evening, Sarvesh! Thu 9 Jul" |
+| App backgrounded | ✅ KEYCODE_HOME |
+| Test route fired — regId returned | ✅ `6a4fcd28f2e444db246a9d78`, status=approved |
+| Android notification shade | ✅ "Regularization Request Approved · Just now / 2026-07-05" |
+| Shade tap → group expand (OxygenOS grouped UI) | ✅ Two child rows visible under "Genesis Workforce" header |
+| Tap individual child row (bounds `[41,458][1039,665]` from UI dump) | ✅ Genesis splash screen launched |
+| Post-splash navigation | ✅ **Regularization detail screen**: Approved / 05 Jul 2026 / OFFICIALTRAVEL |
+| Reason text on screen | ✅ "Phase 17.01 tap-routing verification." |
+
+**Routing path taken:** Cold-start (app fully restarted by OS from notification intent) → `main.dart` `getInitialMessage()` → `initialNotificationRouteProvider` set to `/regularization/6a4fcd28f2e444db246a9d78` → `splash_screen.dart` `context.go(route)` → `RegularizationDetailScreen`.
+
+**Note on OxygenOS grouped notifications:** Android groups FCM notifications from the same app. The group header is not directly launchable — first tap expands the group, second tap on a child row launches. `uiautomator dump` was used to find exact clickable bounds of child rows in expanded state.
 
 ### Cleanup performed
 

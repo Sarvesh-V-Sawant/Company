@@ -24,39 +24,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   Future<void> _submit() async {
-    // PHASE 15.19 DIAGNOSTIC — remove after runtime trace captured
-    // ignore: avoid_print
-    print('[DIAG][FP-UI] Send Reset Link pressed');
     final email = _emailCtrl.text.trim();
-    // ignore: avoid_print
-    print('[DIAG][FP-UI] email = ${email.isEmpty ? "<empty>" : "${email.substring(0, !email.contains('@') ? email.length : email.indexOf('@'))}@***"}');
     if (email.isEmpty || !email.contains('@')) {
-      // ignore: avoid_print
-      print('[DIAG][FP-UI] Validation failed: invalid email');
       setState(() => _error = 'Enter a valid email address.');
       return;
     }
-
-    // ignore: avoid_print
-    print('[DIAG][FP-UI] Validation passed. Setting _loading=true');
     setState(() { _loading = true; _error = null; });
     try {
-      final repo = ref.read(authRepositoryProvider);
-      // ignore: avoid_print
-      print('[DIAG][FP-UI] Calling repo.forgotPassword()');
-      await repo.forgotPassword(email);
-      // ignore: avoid_print
-      print('[DIAG][FP-UI] repo.forgotPassword() returned (no exception). mounted=$mounted');
-      if (mounted) {
-        // ignore: avoid_print
-        print('[DIAG][FP-UI] Setting _sent=true → showing SuccessView');
-        setState(() { _sent = true; _loading = false; });
-      }
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[DIAG][FP-UI] catch: ${e.runtimeType} $e');
-      // ignore: avoid_print
-      print('[DIAG][FP-UI] stack:\n$stack');
+      await ref.read(authRepositoryProvider).forgotPassword(email);
+      if (mounted) setState(() { _sent = true; _loading = false; });
+    } catch (e) {
       if (mounted) setState(() { _loading = false; _error = 'Too many requests. Wait 1 hour.'; });
     }
   }
@@ -68,12 +45,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: _sent ? _SuccessView(onBack: () {
-          // PHASE 15.19 DIAGNOSTIC
-          // ignore: avoid_print
-          print('[DIAG][FP-NAV] Back to Sign In tapped → context.pop()');
-          context.pop();
-        }) : _FormView(
+          child: _sent ? _SuccessView(onBack: () => context.pop()) : _FormView(
             emailCtrl: _emailCtrl,
             loading: _loading,
             error: _error,

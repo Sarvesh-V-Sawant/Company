@@ -11,29 +11,12 @@ class AuthRemoteSource {
     required String password,
     required String deviceFingerprint,
   }) async {
-    // PHASE 15.18 DIAGNOSTIC
-    // ignore: avoid_print
-    print('[DIAG][SRC] login() called  email=${email.substring(0, email.indexOf('@'))}@***  fp=${deviceFingerprint.substring(0, 8)}...');
-    // ignore: avoid_print
-    print('[DIAG][SRC] baseUrl resolves to: ${_dio.options.baseUrl}');
-    // ignore: avoid_print
-    print('[DIAG][SRC] full URL: ${_dio.options.baseUrl}${ApiEndpoints.login}');
-    try {
-      final response = await _dio.post(ApiEndpoints.login, data: {
-        'email': email,
-        'password': password,
-        'deviceFingerprint': deviceFingerprint,
-      });
-      // ignore: avoid_print
-      print('[DIAG][SRC] login() response status=${response.statusCode}');
-      return response.data as Map<String, dynamic>;
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[DIAG][SRC] login() threw: ${e.runtimeType} $e');
-      // ignore: avoid_print
-      print('[DIAG][SRC] login() stack:\n$stack');
-      rethrow;
-    }
+    final response = await _dio.post(ApiEndpoints.login, data: {
+      'email': email,
+      'password': password,
+      'deviceFingerprint': deviceFingerprint,
+    });
+    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> refresh(String refreshToken, String sessionId) async {
@@ -70,22 +53,7 @@ class AuthRemoteSource {
   }
 
   Future<void> forgotPassword(String email) async {
-    // PHASE 15.19 DIAGNOSTIC
-    // ignore: avoid_print
-    print('[DIAG][FP-SRC] forgotPassword() called  email=${email.substring(0, email.indexOf('@'))}@***');
-    // ignore: avoid_print
-    print('[DIAG][FP-SRC] POST ${_dio.options.baseUrl}${ApiEndpoints.forgotPassword}');
-    try {
-      final response = await _dio.post(ApiEndpoints.forgotPassword, data: {'email': email});
-      // ignore: avoid_print
-      print('[DIAG][FP-SRC] forgotPassword() response status=${response.statusCode}  body=${response.data}');
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[DIAG][FP-SRC] forgotPassword() threw: ${e.runtimeType} $e');
-      // ignore: avoid_print
-      print('[DIAG][FP-SRC] stack:\n$stack');
-      rethrow;
-    }
+    await _dio.post(ApiEndpoints.forgotPassword, data: {'email': email});
   }
 
   Future<void> resetPassword({
