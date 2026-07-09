@@ -8,6 +8,7 @@ export class FcmService {
     employeeId: mongoose.Types.ObjectId,
     title: string,
     body: string,
+    data?: Record<string, string>,
   ): Promise<void> {
     await connectDB();
 
@@ -19,7 +20,7 @@ export class FcmService {
     await Promise.allSettled(
       tokens.map(async (tokenDoc) => {
         try {
-          await sendFcmNotification(tokenDoc.token, title, body);
+          await sendFcmNotification(tokenDoc.token, title, body, data);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           if (

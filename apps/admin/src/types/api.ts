@@ -16,6 +16,7 @@ export interface Employee {
   dateOfJoining: string;
   dateOfLeaving?: string | null;
   hasRegisteredDevice?: boolean;
+  allowOutsideGeofence?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,8 +61,9 @@ export interface RegularizationRequest {
   reviewedBy?: string | Employee;
   reviewedAt?: string;
   reviewRemark?: string;
+  attendanceDayId?: string | null;
+  withdrawnAt?: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface PayrollRecord {

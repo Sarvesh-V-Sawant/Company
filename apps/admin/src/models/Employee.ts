@@ -12,6 +12,7 @@ export interface IEmployee extends Document {
   status: 'active' | 'inactive';
   deviceHash?: string;
   fcmToken?: string;
+  allowOutsideGeofence: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +30,7 @@ const EmployeeSchema = new Schema<IEmployee>(
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     deviceHash: { type: String },
     fcmToken: { type: String },
+    allowOutsideGeofence: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

@@ -82,7 +82,12 @@ export class NotificationService {
     const notifId = (doc as INotification & { _id: mongoose.Types.ObjectId })._id;
 
     // Push — non-blocking, errors swallowed
-    void FcmService.sendToEmployee(params.employeeId, params.title, params.body)
+    const fcmData: Record<string, string> = {
+      type: TYPE_TO_API[params.type] ?? params.type,
+    };
+    if (params.referenceId) fcmData.referenceId = params.referenceId.toHexString();
+
+    void FcmService.sendToEmployee(params.employeeId, params.title, params.body, fcmData)
       .then(() =>
         Notification.updateOne(
           { _id: notifId },

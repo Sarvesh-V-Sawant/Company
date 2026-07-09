@@ -105,6 +105,15 @@ Future<void> _bootstrap() async {
   // Wire foreground + tap handlers immediately after Firebase init
   await container.read(fcmServiceProvider).initialize();
 
+  // Background-tap routing: FcmService._handleMessageOpenedApp ignores the route return value,
+  // so we add a second listener here where we have container access to set the provider.
+  FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    final route = FcmService.routeFromMessage(message);
+    if (route != null) {
+      container.read(pendingNotificationRouteProvider.notifier).state = route;
+    }
+  });
+
   runApp(UncontrolledProviderScope(
     container: container,
     child: const GenesisApp(),

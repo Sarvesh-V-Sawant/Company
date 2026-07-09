@@ -9,6 +9,7 @@ import { CompanySettings } from '@models/CompanySettings';
 import { PayrollRecord } from '@models/PayrollRecord';
 import { AuditLog } from '@models/AuditLog';
 import { User } from '@models/User';
+import { Employee } from '@models/Employee';
 import { NotificationService } from '@services/NotificationService';
 import { computeDayStatus } from '@engines/DayStatusEngine';
 import type { IRegularization } from '@models/Regularization';
@@ -18,11 +19,16 @@ import type { JwtPayload } from '@app-types/jwt';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatReg(reg: IRegularization & { _id: mongoose.Types.ObjectId }) {
+type EmployeeStub = { _id: string; firstName: string; lastName: string } | null;
+
+function formatReg(
+  reg: IRegularization & { _id: mongoose.Types.ObjectId },
+  employeeStub?: EmployeeStub,
+) {
   return {
-    id:                reg._id.toHexString(),
-    employeeId:        reg.employeeId.toHexString(),
-    dateString:        reg.dateString,
+    _id:               reg._id.toHexString(),
+    employeeId:        employeeStub ?? reg.employeeId.toHexString(),
+    date:              reg.dateString,
     type:              reg.type,
     requestedCheckIn:  reg.requestedCheckIn?.toISOString() ?? null,
     requestedCheckOut: reg.requestedCheckOut?.toISOString() ?? null,
@@ -141,15 +147,17 @@ export class RegularizationService {
     const { employeeId, input } = params;
     const employeeOid = new mongoose.Types.ObjectId(employeeId);
 
-    // BR-REG-01: date must not be future or today
+    // BR-REG-01: date must not be future (work-away allows today; others require past only)
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
     const reqDate = new Date(input.date + 'T00:00:00Z');
-    if (reqDate >= today) {
-      throw new AppError('GEN_001', 400, 'Date must be in the past.');
+    const isWorkAway = input.type === 'workAwayFromOffice';
+    const isFuture = isWorkAway ? reqDate > today : reqDate >= today;
+    if (isFuture) {
+      throw new AppError('GEN_001', 400, isWorkAway ? 'Date must not be in the future.' : 'Date must be in the past.');
     }
 
-    // BR-REG-01: within lookback window
+    // BR-REG-01: within lookback window (same-day work-away is always within window)
     const lookbackMs = settings.regularizationLookbackDays * 24 * 60 * 60 * 1000;
     if (today.getTime() - reqDate.getTime() > lookbackMs) {
       throw new AppError('REG_001', 422, `Date is older than the allowed lookback window of ${settings.regularizationLookbackDays} days.`);
@@ -171,6 +179,28 @@ export class RegularizationService {
     }).lean();
     if (existing) {
       throw new AppError('REG_002', 409, 'A regularization request already exists for this date.');
+    }
+
+    // BR-REG-03: session state must be consistent with the requested type
+    const sessions = await AttendanceSession.find({
+      employeeId: employeeOid,
+      dateString: input.date,
+    }).lean();
+
+    // A session closed by the employee (not by system) is a completed record — no regularisation allowed
+    const hasCompletedSession = sessions.some((s) => s.checkOut !== null && !s.closedBySystem);
+    if (hasCompletedSession) {
+      throw new AppError('REG_004', 422, 'This date already has a completed attendance record. Regularisation is not available.');
+    }
+
+    // forgotCheckOut requires a missed-checkout session (still active, or closed by midnight rollover)
+    if (input.type === 'forgotCheckOut') {
+      const hasEligibleSession = sessions.some(
+        (s) => s.isActive || (s.closedBySystem && s.systemCloseReason === 'midnight-rollover'),
+      );
+      if (!hasEligibleSession) {
+        throw new AppError('REG_005', 422, 'No missed-checkout session found for this date. If you were absent, please apply for leave instead.');
+      }
     }
 
     const reg = await Regularization.create({
@@ -395,18 +425,47 @@ export class RegularizationService {
       targetId:    id,
     });
 
+    // Same-day work-away approval → enable geofence bypass so employee can check in now
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (reg.type === 'workAwayFromOffice' && reg.dateString === todayStr) {
+      const empUser = await User.findById(employeeOid, 'employeeId firstName lastName dateOfJoining monthlySalary').lean() as
+        { employeeId: string; firstName: string; lastName: string; dateOfJoining: Date; monthlySalary: number } | null;
+      if (empUser) {
+        await Employee.findOneAndUpdate(
+          { userId: employeeOid },
+          {
+            $set: { allowOutsideGeofence: true },
+            $setOnInsert: {
+              employeeCode:  empUser.employeeId,
+              firstName:     empUser.firstName,
+              lastName:      empUser.lastName,
+              joiningDate:   empUser.dateOfJoining,
+              monthlySalary: empUser.monthlySalary ?? 0,
+            },
+          },
+          { upsert: true },
+        );
+      }
+    }
+
     void (async () => {
-      const regUser = await User.findById(reg.employeeId, 'email firstName lastName').lean() as { email: string; firstName: string; lastName: string } | null;
-      void NotificationService.create({
-        employeeId:    reg.employeeId,
-        type:          'regularizationApproved',
-        title:         'Regularization Request Approved',
-        body:          `Your attendance regularization request for ${reg.dateString} has been approved.`,
-        referenceType: 'regularizationRequest',
-        referenceId:   reg._id,
-        emailAddress:  regUser?.email,
-        emailName:     regUser ? `${regUser.firstName} ${regUser.lastName}` : undefined,
-      });
+      try {
+        const regUser = await User.findById(reg.employeeId, 'email firstName lastName').lean() as { email: string; firstName: string; lastName: string } | null;
+        const isSameDayWorkAway = reg.type === 'workAwayFromOffice' && reg.dateString === todayStr;
+        const notifBody = isSameDayWorkAway
+          ? 'Your work-away request has been approved. You can now check in from your current location.'
+          : `Your attendance regularization request for ${reg.dateString} has been approved.`;
+        await NotificationService.create({
+          employeeId:    reg.employeeId,
+          type:          'regularizationApproved',
+          title:         isSameDayWorkAway ? 'Work-Away Request Approved' : 'Regularization Request Approved',
+          body:          notifBody,
+          referenceType: 'regularizationRequest',
+          referenceId:   reg._id,
+          emailAddress:  regUser?.email,
+          emailName:     regUser ? `${regUser.firstName} ${regUser.lastName}` : undefined,
+        });
+      } catch { /* notification failure is non-critical */ }
     })();
 
     return {
@@ -446,17 +505,19 @@ export class RegularizationService {
     });
 
     void (async () => {
-      const regUser = await User.findById(reg.employeeId, 'email firstName lastName').lean() as { email: string; firstName: string; lastName: string } | null;
-      void NotificationService.create({
-        employeeId:    reg.employeeId,
-        type:          'regularizationRejected',
-        title:         'Regularization Request Rejected',
-        body:          `Your attendance regularization request for ${reg.dateString} has been rejected.${reason ? ` Reason: ${reason}` : ''}`,
-        referenceType: 'regularizationRequest',
-        referenceId:   reg._id,
-        emailAddress:  regUser?.email,
-        emailName:     regUser ? `${regUser.firstName} ${regUser.lastName}` : undefined,
-      });
+      try {
+        const regUser = await User.findById(reg.employeeId, 'email firstName lastName').lean() as { email: string; firstName: string; lastName: string } | null;
+        await NotificationService.create({
+          employeeId:    reg.employeeId,
+          type:          'regularizationRejected',
+          title:         'Regularization Request Rejected',
+          body:          `Your attendance regularization request for ${reg.dateString} has been rejected.${reason ? ` Reason: ${reason}` : ''}`,
+          referenceType: 'regularizationRequest',
+          referenceId:   reg._id,
+          emailAddress:  regUser?.email,
+          emailName:     regUser ? `${regUser.firstName} ${regUser.lastName}` : undefined,
+        });
+      } catch { /* notification failure is non-critical */ }
     })();
 
     return { id, status: 'rejected' };
@@ -532,8 +593,20 @@ export class RegularizationService {
       Regularization.countDocuments(filter),
     ]);
 
+    // Batch-load employee names for admin list view
+    const uniqueIds = [...new Set(regs.map((r) => r.employeeId.toHexString()))];
+    const users = await User.find(
+      { _id: { $in: uniqueIds } },
+      '_id firstName lastName',
+    ).lean() as { _id: mongoose.Types.ObjectId; firstName: string; lastName: string }[];
+    const userMap = new Map(users.map((u) => [u._id.toHexString(), u]));
+
     return {
-      data:       regs.map(formatReg),
+      data: regs.map((r) => {
+        const u = userMap.get(r.employeeId.toHexString());
+        const stub: EmployeeStub = u ? { _id: u._id.toHexString(), firstName: u.firstName, lastName: u.lastName } : null;
+        return formatReg(r, stub);
+      }),
       pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
     };
   }
@@ -550,7 +623,7 @@ export class RegularizationService {
     ]);
 
     return {
-      data:       regs.map(formatReg),
+      data:       regs.map((r) => formatReg(r)),
       pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
     };
   }

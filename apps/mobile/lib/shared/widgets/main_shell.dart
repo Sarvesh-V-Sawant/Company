@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/di/providers.dart';
 import '../../core/router/route_names.dart';
 import '../../features/notifications/presentation/providers/notifications_provider.dart';
 
@@ -10,6 +11,13 @@ class MainShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<String?>(pendingNotificationRouteProvider, (_, route) {
+      if (route != null) {
+        context.go(route);
+        ref.read(pendingNotificationRouteProvider.notifier).state = null;
+      }
+    });
+
     final location = GoRouterState.of(context).uri.toString();
     final unreadCount = ref.watch(unreadCountProvider);
 

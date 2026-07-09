@@ -5,6 +5,8 @@ import { sha256 } from '@lib/utils/hash';
 import { haversineMeters } from '@engines/GeoFenceEngine';
 import { computeDayStatus } from '@engines/DayStatusEngine';
 import { User } from '@models/User';
+import { Employee } from '@models/Employee';
+import type { IEmployee } from '@models/Employee';
 import { CompanySettings } from '@models/CompanySettings';
 import { AttendanceDay } from '@models/AttendanceDay';
 import { AttendanceSession } from '@models/AttendanceSession';
@@ -136,8 +138,11 @@ export class AttendanceService {
     const settings = await CompanySettings.findById('company-settings').lean() as ICompanySettings | null;
     if (!settings) throw new AppError('GEN_500', 500, 'Company settings not configured.');
 
-    // Load user
-    const user = await User.findById(input.employeeId).lean();
+    // Load user and employee profile
+    const [user, employeeProfile] = await Promise.all([
+      User.findById(input.employeeId).lean(),
+      Employee.findOne({ userId: new mongoose.Types.ObjectId(input.employeeId) }).lean<IEmployee>(),
+    ]);
     if (!user) throw new AppError('AUTH_003', 401, 'Unauthorized.');
     if (!user.isActive) throw new AppError('AUTH_007', 403, 'Account deactivated.');
 
@@ -176,13 +181,14 @@ export class AttendanceService {
     // Mock GPS detection (BR-ATT-06)
     const possibleMockGps = input.accuracy === 0;
 
-    // Geo-fence check (BR-ATT-04)
+    // Geo-fence check (BR-ATT-04) — skipped for employees with allowOutsideGeofence=true
     const distanceFromOffice = haversineMeters(
       { latitude: input.latitude, longitude: input.longitude },
       { latitude: settings.geoFence.latitude, longitude: settings.geoFence.longitude },
     );
     const isWithinGeoFence = distanceFromOffice <= settings.geoFence.radiusMeters;
-    if (settings.geoFence.isEnabled && !isWithinGeoFence) {
+    const bypassGeofence = employeeProfile?.allowOutsideGeofence === true;
+    if (settings.geoFence.isEnabled && !isWithinGeoFence && !bypassGeofence) {
       throw new AppError('ATT_001', 422, 'Outside geofence.');
     }
 
@@ -438,10 +444,14 @@ export class AttendanceService {
     const totalMinutes = day?.totalMinutes ?? 0;
     const requiredMinutes = settings?.requiredDailyMinutes ?? 540;
 
-    // Running minutes for active session
-    const runningMinutes = activeSession
+    // Running minutes for active session; capped at 24h — beyond that the employee
+    // forgot to check out and must regularise rather than showing an unbounded timer.
+    const MAX_SESSION_MINUTES = 24 * 60;
+    const rawRunningMinutes = activeSession
       ? Math.round((Date.now() - activeSession.checkIn.timestamp.getTime()) / 60_000)
       : 0;
+    const forgotCheckout = rawRunningMinutes >= MAX_SESSION_MINUTES;
+    const runningMinutes = forgotCheckout ? MAX_SESSION_MINUTES : rawRunningMinutes;
 
     const sessions = allSessions.map((s) => ({
       sessionId: (s._id as mongoose.Types.ObjectId).toHexString(),
@@ -453,6 +463,7 @@ export class AttendanceService {
 
     return {
       isCheckedIn,
+      forgotCheckout,
       todayDateString: dateString,
       currentSession: isCheckedIn && activeSession
         ? {
@@ -463,7 +474,7 @@ export class AttendanceService {
               longitude: activeSession.checkIn.longitude,
             },
             elapsedMinutes: runningMinutes,
-            remainingMinutes: Math.max(0, requiredMinutes - totalMinutes - runningMinutes),
+            remainingMinutes: forgotCheckout ? 0 : Math.max(0, requiredMinutes - totalMinutes - runningMinutes),
           }
         : null,
       todaySummary: {

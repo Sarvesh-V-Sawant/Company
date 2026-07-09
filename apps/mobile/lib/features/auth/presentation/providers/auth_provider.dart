@@ -70,9 +70,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    // Clear FCM token before clearing session
-    await _fcm.clearToken();
-    await _repo.logout();
+    try {
+      await _fcm.clearToken();
+    } catch (_) {}
+    try {
+      await _repo.logout();
+    } catch (_) {}
+    // Always clear local auth state, even if backend/Firebase calls fail.
     state = const AuthState(isInitialized: true);
   }
 

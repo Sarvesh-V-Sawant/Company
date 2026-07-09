@@ -327,8 +327,13 @@ export default function EmployeeDetailPage() {
             <Row label="Phone"        value={employee.phone} />
             <Row label="Department"   value={employee.department} />
             <Row label="Designation"  value={employee.designation} />
-            <Row label="Role"         value={<span className="capitalize">{employee.role}</span>} />
-            <Row label="Status"       value={<StatusBadge status={employee.isActive ? 'active' : 'inactive'} />} />
+            <Row label="Role"              value={<span className="capitalize">{employee.role}</span>} />
+            <Row label="Status"            value={<StatusBadge status={employee.isActive ? 'active' : 'inactive'} />} />
+            <Row label="Field Employee"    value={
+              employee.allowOutsideGeofence
+                ? <span className="inline-flex items-center gap-1 text-blue-700 font-medium">✓ Geofence bypass enabled</span>
+                : <span className="text-gray-400">Office-only (geofence enforced)</span>
+            } />
             <Row label="Joining Date" value={employee.dateOfJoining ? format(parseISO(employee.dateOfJoining), 'dd MMM yyyy') : undefined} />
             <Row label="Created"      value={format(parseISO(employee.createdAt), 'dd MMM yyyy')} />
           </dl>

@@ -85,6 +85,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     'AUTH_001' => 'Invalid email or password.',
     'AUTH_002' => 'Too many attempts. Try again later.',
     'AUTH_007' => 'Account deactivated. Contact your admin.',
+    'NETWORK_ERROR' => 'No connection. Check your network and try again.',
+    'GEN_001' => 'Request validation failed. Please try again.',
     _ => 'Login failed. Please try again.',
   };
 

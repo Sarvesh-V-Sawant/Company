@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/models/attendance.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../providers/attendance_provider.dart';
@@ -47,6 +48,17 @@ class DailyDetailScreen extends ConsumerWidget {
                           if (e.value.checkIn != null) Text('In:  ${_fmtFull(e.value.checkIn)}'),
                           if (e.value.checkOut != null) Text('Out: ${_fmtFull(e.value.checkOut)}'),
                           if (e.value.durationMinutes != null) Text('Duration: ${e.value.durationMinutes! ~/ 60}h ${e.value.durationMinutes! % 60}m', style: const TextStyle(color: Colors.grey)),
+                          if (e.value.checkInLocation != null) ...[
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${e.value.checkInLocation!.latitude.toStringAsFixed(5)}, ${e.value.checkInLocation!.longitude.toStringAsFixed(5)}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ]),
+                          ],
                         ]),
                       ),
                     )),
@@ -61,20 +73,34 @@ class DailyDetailScreen extends ConsumerWidget {
                       const Text('No regularization for this date.', style: TextStyle(color: Colors.grey)),
                     ]))),
                   const SizedBox(height: 16),
-                  if (!rec.isRegularized && _canRegularize(dateStr)) ...[
-                    if (rec.sessions.isNotEmpty)
+                  if (!rec.isRegularized && _isWithinLookback(dateStr)) ...[
+                    if (_hasMissedCheckout(rec))
                       OutlinedButton(
-                        onPressed: () => context.push('${RouteNames.regularizationCreate}?date=$dateStr'),
-                        child: const Text('Apply Regularization'),
+                        onPressed: () {
+                          final missed = rec.sessions.firstWhere((s) => s.closedBySystem);
+                          final ci = _isoToHHMM(missed.checkIn);
+                          final uri = '${RouteNames.regularizationCreate}?type=forgotCheckOut&date=$dateStr'
+                              '${ci != null ? '&checkIn=$ci' : ''}';
+                          context.push(uri);
+                        },
+                        child: const Text('Apply Regularisation'),
                       )
-                    else if (rec.status == 'absent')
+                    else if (!_hasCompletedSession(rec) && rec.sessions.isEmpty && rec.status == 'absent')
                       OutlinedButton(
                         onPressed: () => context.push(RouteNames.leaveApply),
                         child: const Text('Apply Leave'),
                       ),
                   ],
-                ] else
+                ] else ...[
                   const Center(child: Text('No attendance record for this date.')),
+                  if (_isWithinLookback(dateStr) && !_isWeekend(dateStr)) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: () => context.push(RouteNames.leaveApply),
+                      child: const Text('Apply Leave'),
+                    ),
+                  ],
+                ],
               ],
             ),
           );
@@ -83,11 +109,33 @@ class DailyDetailScreen extends ConsumerWidget {
     );
   }
 
-  bool _canRegularize(String dateStr) {
+  bool _isWithinLookback(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
-      return DateTime.now().difference(date).inDays <= 7;
+      return DateTime.now().difference(date).inDays <= 30;
     } catch (_) { return false; }
+  }
+
+  bool _isWeekend(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    } catch (_) { return false; }
+  }
+
+  // Session closed by system (midnight rollover) — no real employee checkout
+  bool _hasMissedCheckout(AttendanceRecord rec) =>
+      rec.sessions.any((s) => s.closedBySystem);
+
+  // Session with a real employee checkout (employee checked out voluntarily)
+  bool _hasCompletedSession(AttendanceRecord rec) =>
+      rec.sessions.any((s) => !s.closedBySystem && s.checkOut != null);
+
+  String? _isoToHHMM(String? iso) {
+    if (iso == null) return null;
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return null;
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   String _fmtFull(String? iso) {

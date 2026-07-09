@@ -1,15 +1,33 @@
+class AttendanceCheckInLocation {
+  final double latitude;
+  final double longitude;
+  const AttendanceCheckInLocation({required this.latitude, required this.longitude});
+
+  factory AttendanceCheckInLocation.fromJson(Map<String, dynamic> json) {
+    return AttendanceCheckInLocation(
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
 class AttendanceSession {
   final String? checkIn;
   final String? checkOut;
   final int? durationMinutes;
+  final AttendanceCheckInLocation? checkInLocation;
+  final bool closedBySystem;
 
-  const AttendanceSession({this.checkIn, this.checkOut, this.durationMinutes});
+  const AttendanceSession({this.checkIn, this.checkOut, this.durationMinutes, this.checkInLocation, this.closedBySystem = false});
 
   factory AttendanceSession.fromJson(Map<String, dynamic> json) {
+    final locJson = json['checkInLocation'] as Map<String, dynamic>?;
     return AttendanceSession(
       checkIn: json['checkIn'] as String? ?? json['checkInTimestamp'] as String?,
       checkOut: json['checkOut'] as String? ?? json['checkOutTimestamp'] as String?,
       durationMinutes: json['durationMinutes'] as int?,
+      checkInLocation: locJson != null ? AttendanceCheckInLocation.fromJson(locJson) : null,
+      closedBySystem: json['closedBySystem'] as bool? ?? false,
     );
   }
 }
@@ -18,6 +36,7 @@ class TodayAttendance {
   final String date;
   final String status;
   final bool isCheckedIn;
+  final bool forgotCheckout;
   final String? currentSessionStart;
   final List<AttendanceSession> sessions;
   final int totalMinutesToday;
@@ -26,6 +45,7 @@ class TodayAttendance {
     required this.date,
     required this.status,
     required this.isCheckedIn,
+    this.forgotCheckout = false,
     this.currentSessionStart,
     required this.sessions,
     required this.totalMinutesToday,
@@ -36,6 +56,7 @@ class TodayAttendance {
       date: json['date'] as String? ?? '',
       status: json['status'] as String? ?? 'absent',
       isCheckedIn: json['isCheckedIn'] as bool? ?? false,
+      forgotCheckout: json['forgotCheckout'] as bool? ?? false,
       currentSessionStart: json['currentSessionStart'] as String?,
       sessions: (json['sessions'] as List<dynamic>?)
               ?.map((e) => AttendanceSession.fromJson(e as Map<String, dynamic>))

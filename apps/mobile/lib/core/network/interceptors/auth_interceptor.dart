@@ -42,8 +42,10 @@ class AuthInterceptor extends Interceptor {
     }
 
     // For public auth endpoints a 401 means wrong credentials, not session expiry.
-    // Pass through so the caller can inspect the error body and surface the right message.
-    final publicPaths = [ApiEndpoints.login, ApiEndpoints.forgotPassword, ApiEndpoints.resetPassword];
+    // Logout is included: a 401 there means the token was already expired/invalid,
+    // but we are intentionally clearing the session — not losing it unexpectedly.
+    // Pass through so logout always completes without triggering the session-expiry flow.
+    final publicPaths = [ApiEndpoints.login, ApiEndpoints.forgotPassword, ApiEndpoints.resetPassword, ApiEndpoints.logout];
     if (publicPaths.any((path) => err.requestOptions.path.endsWith(path))) {
       handler.next(err);
       return;

@@ -67,18 +67,24 @@ class ProfileScreen extends ConsumerWidget {
             onTap: () async {
               final confirm = await showDialog<bool>(
                 context: context,
-                builder: (_) => AlertDialog(
+                builder: (dialogContext) => AlertDialog(
                   title: const Text('Sign Out?'),
                   content: const Text('You will need to sign in again.'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign Out')),
+                    TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                    TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Sign Out')),
                   ],
                 ),
               );
               if (confirm != true) return;
+              if (!context.mounted) return;
+              // Yield to the event loop so the dialog-pop animation frame
+              // completes before GoRouter redirect fires — avoids navigator lock.
+              await Future<void>.delayed(Duration.zero);
+              if (!context.mounted) return;
               await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go(RouteNames.login);
+              // Router redirect handles navigation when auth state clears;
+              // no explicit go() needed — avoids double-navigate race.
             },
           ),
         ],

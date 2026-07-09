@@ -36,12 +36,13 @@ const createSchema = z.object({
 });
 
 const editSchema = z.object({
-  firstName:     z.string().min(1, 'Required').max(50).optional(),
-  lastName:      z.string().min(1, 'Required').max(50).optional(),
-  phone:         z.string().optional(),
-  department:    z.string().max(100).optional(),
-  designation:   z.string().max(100).optional(),
-  monthlySalary: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0).optional(),
+  firstName:             z.string().min(1, 'Required').max(50).optional(),
+  lastName:              z.string().min(1, 'Required').max(50).optional(),
+  phone:                 z.string().optional(),
+  department:            z.string().max(100).optional(),
+  designation:           z.string().max(100).optional(),
+  monthlySalary:         z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0).optional(),
+  allowOutsideGeofence:  z.boolean().optional(),
 });
 
 type CreateForm = z.infer<typeof createSchema>;
@@ -204,17 +205,19 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
 
 function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSuccess: () => void }) {
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<EditForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<EditForm>({
     resolver: zodResolver(editSchema),
     defaultValues: {
-      firstName:     employee.firstName,
-      lastName:      employee.lastName,
-      phone:         employee.phone ?? '',
-      department:    employee.department ?? '',
-      designation:   employee.designation ?? '',
-      monthlySalary: employee.monthlySalary,
+      firstName:            employee.firstName,
+      lastName:             employee.lastName,
+      phone:                employee.phone ?? '',
+      department:           employee.department ?? '',
+      designation:          employee.designation ?? '',
+      monthlySalary:        employee.monthlySalary,
+      allowOutsideGeofence: employee.allowOutsideGeofence ?? false,
     },
   });
+  const allowOutsideGeofence = watch('allowOutsideGeofence');
 
   const onSubmit = async (data: EditForm) => {
     setSubmitting(true);
@@ -227,12 +230,13 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
       await apiFetch(`/api/v1/employees/${employee.id}`, {
         method: 'PUT',
         body: JSON.stringify({
-          firstName:     data.firstName?.trim(),
-          lastName:      data.lastName?.trim(),
+          firstName:            data.firstName?.trim(),
+          lastName:             data.lastName?.trim(),
           phone,
-          department:    data.department?.trim() || null,
-          designation:   data.designation?.trim() || null,
-          monthlySalary: data.monthlySalary,
+          department:           data.department?.trim() || null,
+          designation:          data.designation?.trim() || null,
+          monthlySalary:        data.monthlySalary,
+          allowOutsideGeofence: data.allowOutsideGeofence,
         }),
       });
       toast.success('Employee updated');
@@ -300,6 +304,26 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
         <Input type="number" min={0} step={500} {...register('monthlySalary')}
           error={!!errors.monthlySalary} />
         {errors.monthlySalary && <p className="mt-1 text-xs text-red-600">{errors.monthlySalary.message}</p>}
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+        <div>
+          <p className="text-sm font-medium text-gray-900">Allow outside-geofence attendance</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Field employees — check-in bypasses the office geofence restriction.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={allowOutsideGeofence}
+          onClick={() => setValue('allowOutsideGeofence', !allowOutsideGeofence, { shouldDirty: true })}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${allowOutsideGeofence ? 'bg-blue-600' : 'bg-gray-200'}`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${allowOutsideGeofence ? 'translate-x-5' : 'translate-x-0'}`}
+          />
+        </button>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">

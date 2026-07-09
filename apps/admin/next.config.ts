@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['mongoose'],
+  serverExternalPackages: ['mongoose', 'firebase-admin'],
   async headers() {
     return [
       {

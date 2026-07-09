@@ -147,7 +147,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Regularization (outside shell — no bottom nav)
       GoRoute(path: RouteNames.regularization, builder: (_, __) => const RegularizationScreen()),
-      GoRoute(path: RouteNames.regularizationCreate, builder: (_, state) => RegularizationCreateScreen(initialDate: state.uri.queryParameters['date'])),
+      GoRoute(path: RouteNames.regularizationCreate, builder: (_, state) => RegularizationCreateScreen(
+        initialDate: state.uri.queryParameters['date'],
+        initialType: state.uri.queryParameters['type'],
+        initialCheckIn: state.uri.queryParameters['checkIn'],
+      )),
       GoRoute(path: '/regularization/:id', builder: (_, state) => RegularizationDetailScreen(id: state.pathParameters['id'] ?? '')),
 
       // Payslips (outside shell)

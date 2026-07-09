@@ -18,6 +18,7 @@ class AttendanceRemoteSource {
       'date': raw['todayDateString'] ?? '',
       'status': summary['status'] ?? 'absent',
       'isCheckedIn': raw['isCheckedIn'] ?? false,
+      'forgotCheckout': raw['forgotCheckout'] ?? false,
       'currentSessionStart': currentSession?['checkInTimestamp'],
       'sessions': rawSessions.map((s) {
         final m = s as Map<String, dynamic>;
@@ -25,6 +26,7 @@ class AttendanceRemoteSource {
           'checkIn': m['checkInTimestamp'],
           'checkOut': m['checkOutTimestamp'],
           'durationMinutes': m['durationMinutes'],
+          'closedBySystem': m['closedBySystem'],
         };
       }).toList(),
       'totalMinutesToday': summary['totalMinutes'] ?? 0,

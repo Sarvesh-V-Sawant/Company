@@ -49,7 +49,11 @@ class FcmService {
   }
 
   Future<void> clearToken() async {
-    await FirebaseMessaging.instance.deleteToken();
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {
+      // Non-fatal — token may already be invalid or Firebase unavailable
+    }
   }
 
   Future<NotificationSettings> requestPermission() =>
@@ -97,13 +101,13 @@ class FcmService {
     final type = data['type'] as String?;
     final id = data['referenceId'] as String?;
     switch (type) {
-      case 'leave_approved':
-      case 'leave_rejected':
+      case 'leave-approved':
+      case 'leave-rejected':
         return id != null ? '/leave/$id' : '/leave';
-      case 'reg_approved':
-      case 'reg_rejected':
+      case 'regularization-approved':
+      case 'regularization-rejected':
         return id != null ? '/regularization/$id' : '/regularization';
-      case 'attendance_reminder':
+      case 'attendance-reminder':
         return '/home';
       default:
         final notifId = data['notificationId'] as String?;

@@ -6,6 +6,7 @@ import { sha256 } from '@lib/utils/hash';
 import { sendEmail } from '@lib/email/brevo';
 import { User } from '@models/User';
 import { Employee } from '@models/Employee';
+import type { IEmployee } from '@models/Employee';
 import { DeviceSession } from '@models/DeviceSession';
 import { AuditLog } from '@models/AuditLog';
 import { CompanySettings } from '@models/CompanySettings';
@@ -329,7 +330,10 @@ export class EmployeeService {
     assertValidObjectId(id);
     await connectDB();
 
-    const user = await User.findById(id);
+    const [user, employeeProfile] = await Promise.all([
+      User.findById(id),
+      Employee.findOne({ userId: new mongoose.Types.ObjectId(id) }).lean<IEmployee>(),
+    ]);
     if (!user) throw new AppError('GEN_002', 404, 'Employee not found.');
 
     return {
@@ -349,6 +353,7 @@ export class EmployeeService {
       hasRegisteredDevice: user.registeredDevice !== null,
       requiresPasswordChange: user.requiresPasswordChange,
       leaveBalances: user.leaveBalances,
+      allowOutsideGeofence: employeeProfile?.allowOutsideGeofence ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -364,6 +369,7 @@ export class EmployeeService {
       designation?: string | null;
       monthlySalary?: number;
       dateOfLeaving?: string | null;
+      allowOutsideGeofence?: boolean;
     },
     performedBy: string,
   ) {
@@ -416,6 +422,25 @@ export class EmployeeService {
     const updated = await User.findByIdAndUpdate(id, updateOp, { new: true, runValidators: true });
     if (!updated) throw new AppError('GEN_002', 404, 'Employee not found.');
 
+    if (data.allowOutsideGeofence !== undefined) {
+      await Employee.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(id) },
+        {
+          $set: { allowOutsideGeofence: data.allowOutsideGeofence },
+          $setOnInsert: {
+            employeeCode:  user.employeeId,
+            firstName:     user.firstName,
+            lastName:      user.lastName,
+            joiningDate:   user.dateOfJoining,
+            monthlySalary: user.monthlySalary ?? 0,
+          },
+        },
+        { upsert: true },
+      );
+      before.allowOutsideGeofence = !data.allowOutsideGeofence;
+      after.allowOutsideGeofence = data.allowOutsideGeofence;
+    }
+
     await AuditLog.create({
       performedBy: new mongoose.Types.ObjectId(performedBy),
       action: 'EMPLOYEE_UPDATED',
@@ -423,6 +448,10 @@ export class EmployeeService {
       targetId: id,
       changes: { before, after },
     });
+
+    const updatedEmployeeProfile = await Employee.findOne(
+      { userId: new mongoose.Types.ObjectId(id) },
+    ).lean<IEmployee>();
 
     return {
       id: (updated._id as mongoose.Types.ObjectId).toHexString(),
@@ -441,6 +470,7 @@ export class EmployeeService {
       hasRegisteredDevice: updated.registeredDevice !== null,
       requiresPasswordChange: updated.requiresPasswordChange,
       leaveBalances: updated.leaveBalances,
+      allowOutsideGeofence: updatedEmployeeProfile?.allowOutsideGeofence ?? false,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

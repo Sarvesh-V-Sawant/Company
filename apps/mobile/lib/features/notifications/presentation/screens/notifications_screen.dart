@@ -64,8 +64,8 @@ class NotificationsScreen extends ConsumerWidget {
         } else {
           context.push(RouteNames.notificationDetail(n.id));
         }
-      case 'reg_approved':
-      case 'reg_rejected':
+      case 'regularization-approved':
+      case 'regularization-rejected':
         if (n.referenceId != null) {
           context.push(RouteNames.regularizationDetail(n.referenceId!));
         } else {
@@ -104,7 +104,7 @@ class _NotificationTile extends StatelessWidget {
 
   IconData _iconFor(String type) => switch (type) {
     'leave_approved' || 'leave_rejected' => Icons.beach_access,
-    'reg_approved' || 'reg_rejected' => Icons.history,
+    'regularization-approved' || 'regularization-rejected' => Icons.history,
     'attendance_reminder' => Icons.timer,
     _ => Icons.notifications,
   };

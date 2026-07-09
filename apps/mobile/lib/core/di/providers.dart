@@ -12,6 +12,9 @@ final sessionExpiredProvider = StateProvider<bool>((ref) => false);
 // Cold-start notification route — overridden in main.dart when app launched from tapped notification
 final initialNotificationRouteProvider = StateProvider<String?>((ref) => null);
 
+// Background-tap notification route — set by main.dart onMessageOpenedApp listener, consumed by MainShell
+final pendingNotificationRouteProvider = StateProvider<String?>((ref) => null);
+
 final dioProvider = Provider<Dio>((ref) {
   // Separate plain Dio for refresh calls only (no auth interceptor — avoids loop)
   final refreshDio = createDioClient();

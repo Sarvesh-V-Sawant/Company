@@ -47,6 +47,7 @@ export const UpdateEmployeeSchema = z
       .regex(DATE_REGEX, 'Must be YYYY-MM-DD')
       .nullable()
       .optional(),
+    allowOutsideGeofence: z.boolean().optional(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: 'At least one field must be provided',
