@@ -325,6 +325,53 @@ export class EmployeeService {
     };
   }
 
+  static async resendSetupLink(id: string, adminId: string) {
+    assertValidObjectId(id);
+    await connectDB();
+
+    const userId = new mongoose.Types.ObjectId(id);
+    const user = await User.findById(userId).lean() as {
+      _id: mongoose.Types.ObjectId;
+      email: string;
+      firstName: string;
+      lastName: string;
+      isActive: boolean;
+    } | null;
+    if (!user) throw new AppError('GEN_002', 404, 'Employee not found.');
+    if (!user.isActive) throw new AppError('GEN_003', 422, 'Cannot send setup link to an inactive employee.');
+
+    // Invalidate all existing unused tokens so old email links no longer work
+    await PasswordResetToken.updateMany(
+      { userId, isUsed: false },
+      { $set: { isUsed: true, usedAt: new Date() } },
+    );
+
+    const rawToken       = randomBytes(32).toString('hex');
+    const tokenHash      = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt      = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await PasswordResetToken.create({ userId, email: user.email, tokenHash, expiresAt, ipAddress: 'system' });
+
+    const setupUrl = `${getAppUrl()}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+
+    try {
+      await sendEmail({
+        to: { email: user.email, name: `${user.firstName} ${user.lastName}` },
+        subject: `Genesis Workforce — Set your password`,
+        htmlContent: welcomeEmailHtml(user.firstName, setupUrl),
+      });
+    } catch { /* swallow — admin can retry */ }
+
+    await AuditLog.create({
+      performedBy: new mongoose.Types.ObjectId(adminId),
+      action:      'EMPLOYEE_SETUP_LINK_RESENT',
+      targetType:  'User',
+      targetId:    id,
+    });
+
+    return { emailSent: true };
+  }
+
   static async getById(id: string, requesterRole: 'admin' | 'employee') {
     if (requesterRole !== 'admin') throw new AppError('AUTH_006', 403, 'Forbidden.');
     assertValidObjectId(id);

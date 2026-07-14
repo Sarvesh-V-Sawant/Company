@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Pencil, Smartphone, ShieldOff, Clock, Check, X } from 'lucide-react';
+import { Pencil, Smartphone, ShieldOff, Clock, Check, X, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import useSWR from 'swr';
@@ -268,9 +268,31 @@ function DeviceSection({ employeeId }: { employeeId: string }) {
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { employee, isLoading, error } = useEmployee(id);
-  const [editOpen, setEditOpen]     = useState(false);
-  const [toggleOpen, setToggleOpen] = useState(false);
-  const [toggling, setToggling]     = useState(false);
+  const [editOpen, setEditOpen]         = useState(false);
+  const [toggleOpen, setToggleOpen]     = useState(false);
+  const [toggling, setToggling]         = useState(false);
+  const [resendOpen, setResendOpen]     = useState(false);
+  const [resending, setResending]       = useState(false);
+
+  const handleResendSetup = async () => {
+    setResending(true);
+    try {
+      const res = await apiFetch<{ success: boolean; error?: { message: string } }>(
+        `/api/v1/employees/${id}/resend-setup-link`,
+        { method: 'POST' },
+      );
+      if (!res.success) {
+        toast.error(res.error?.message ?? 'Failed to send setup link.');
+        return;
+      }
+      toast.success('Password setup link sent.');
+      setResendOpen(false);
+    } catch {
+      toast.error('Failed to send setup link.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleToggle = async () => {
     if (!employee) return;
@@ -310,6 +332,9 @@ export default function EmployeeDetailPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">{employee.firstName} {employee.lastName}</h1>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setResendOpen(true)}>
+              <Mail className="h-3.5 w-3.5 mr-1.5" /> Resend Setup Link
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setToggleOpen(true)}>
               {employee.isActive ? 'Deactivate' : 'Activate'}
             </Button>
@@ -345,6 +370,16 @@ export default function EmployeeDetailPage() {
       <Sheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit Employee">
         <EmployeeForm employee={employee} onSuccess={() => { setEditOpen(false); window.location.reload(); }} />
       </Sheet>
+
+      <ConfirmDialog
+        open={resendOpen}
+        onClose={() => setResendOpen(false)}
+        onConfirm={handleResendSetup}
+        title="Resend Setup Link"
+        description={`Send a new password setup link to ${employee.firstName} ${employee.lastName} (${employee.email})? Any previous setup link will be invalidated.`}
+        confirmLabel="Send Link"
+        loading={resending}
+      />
 
       <ConfirmDialog
         open={toggleOpen}
