@@ -306,7 +306,7 @@ export class EmployeeService {
       ipAddress: 'system',
     });
 
-    const setupUrl = `${getAppUrl()}/reset-password?token=${rawInviteToken}&email=${encodeURIComponent(user.email)}`;
+    const setupUrl = `${getAppUrl()}/reset-password?token=${rawInviteToken}&email=${encodeURIComponent(user.email)}&setup=1`;
 
     try {
       await sendEmail({
@@ -352,7 +352,7 @@ export class EmployeeService {
 
     await PasswordResetToken.create({ userId, email: user.email, tokenHash, expiresAt, ipAddress: 'system' });
 
-    const setupUrl = `${getAppUrl()}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+    const setupUrl = `${getAppUrl()}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}&setup=1`;
 
     try {
       await sendEmail({

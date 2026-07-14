@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Hexagon, ArrowLeft, Eye, EyeOff, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Hexagon, ArrowLeft, Eye, EyeOff, CheckCircle, XCircle, Clock, Smartphone } from 'lucide-react';
 import { Button } from '@components/ui/button';
 import { Input } from '@components/ui/input';
 
@@ -33,6 +33,7 @@ function ResetPasswordForm() {
   const email = params.get('email');
 
   const isInvite = !!token && !!email;
+  const isSetup = params.get('setup') === '1';
   const [state, setState] = useState<State>(isInvite ? 'form' : 'no-token');
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -53,7 +54,7 @@ function ResetPasswordForm() {
       const body = await res.json();
       if (res.ok) {
         setState('success');
-        setTimeout(() => router.replace('/login'), 3000);
+        if (!isSetup) setTimeout(() => router.replace('/login'), 3000);
         return;
       }
       const code = body?.error?.code ?? '';
@@ -103,11 +104,30 @@ function ResetPasswordForm() {
   }
 
   if (state === 'success') {
+    if (isSetup) {
+      return (
+        <div className="text-center">
+          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+          <h2 className="text-base font-semibold text-gray-900 mb-2">Password Created!</h2>
+          <p className="text-sm text-gray-500 mb-4">Your Genesis account is ready.</p>
+          <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 mb-6 text-left">
+            <div className="flex items-start gap-3">
+              <Smartphone className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">Open the Genesis app to sign in</p>
+                <p className="text-xs text-blue-700 mt-0.5">Use your work email and the password you just created.</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">You can close this window.</p>
+        </div>
+      );
+    }
     return (
       <div className="text-center">
         <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
         <h2 className="text-base font-semibold text-gray-900 mb-2">Password Set</h2>
-        <p className="text-sm text-gray-500 mb-6">Your password has been created. Redirecting to sign in…</p>
+        <p className="text-sm text-gray-500 mb-6">Your password has been updated. Redirecting to sign in…</p>
         <Link href="/login" className="text-sm text-blue-600 hover:underline">Sign in now</Link>
       </div>
     );
