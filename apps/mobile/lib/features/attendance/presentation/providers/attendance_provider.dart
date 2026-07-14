@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/di/providers.dart';
 import '../../../../core/models/attendance.dart';
@@ -22,6 +23,7 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
   final Ref _ref;
   CheckInState _checkInState = CheckInState.reconciling;
   Timer? _syncTimer;
+  Timer? _locationTimer;
 
   AttendanceNotifier(this._source, this.settings, this._ref) : super(const AsyncValue.loading());
 
@@ -48,8 +50,15 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
     if (today.isCheckedIn) {
       _setCheckInState(CheckInState.checkedIn);
       _startSyncTimer();
+      final activeSession = today.sessions.where((s) => s.checkOut == null).firstOrNull;
+      if (activeSession?.isRemote == true) {
+        _startLocationTracking();
+      } else {
+        _stopLocationTracking();
+      }
     } else {
       _stopSyncTimer();
+      _stopLocationTracking();
       if (today.sessions.isNotEmpty) {
         final threshold = settings.requiredDailyMinutes - 30;
         _setCheckInState(today.totalMinutesToday >= threshold
@@ -82,6 +91,7 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
     try {
       final today = await _source.checkOut();
       _stopSyncTimer();
+      _stopLocationTracking();
       state = AsyncValue.data(today);
       _resolveState(today);
     } catch (e) {
@@ -90,15 +100,49 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
     }
   }
 
-  // Periodic background sync while checked in — keeps backend state fresh.
+  // --- location tracking ---
+
+  void _startLocationTracking() {
+    if (_locationTimer != null) return; // already running
+    _sendLocationSnapshot(); // immediate snapshot
+    _locationTimer = Timer.periodic(const Duration(minutes: 60), (_) => _sendLocationSnapshot());
+  }
+
+  void _stopLocationTracking() {
+    _locationTimer?.cancel();
+    _locationTimer = null;
+  }
+
+  Future<void> _sendLocationSnapshot() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+      final snapshotSource = _ref.read(locationSnapshotSourceProvider);
+      await snapshotSource.post(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy,
+      );
+    } catch (_) {
+      // Silent — snapshot failure must not surface to employee or crash state
+    }
+  }
+
+  // --- sync timer ---
+
   void _startSyncTimer() {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
         await reconcile();
-      } catch (_) {
-        // reconcile() catches internally; this guards the discarded Timer Future
-      }
+      } catch (_) {}
     });
   }
 
@@ -110,6 +154,7 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
   @override
   void dispose() {
     _stopSyncTimer();
+    _stopLocationTracking();
     super.dispose();
   }
 }

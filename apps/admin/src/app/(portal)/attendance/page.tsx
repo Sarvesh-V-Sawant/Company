@@ -51,6 +51,7 @@ export default function AttendancePage() {
             <span className="px-3 py-1.5 rounded-md bg-white text-gray-900 font-medium shadow-sm">Daily</span>
             <Link href="/attendance/weekly" className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-white hover:text-gray-900 transition-colors">Weekly</Link>
             <Link href="/attendance/monthly" className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-white hover:text-gray-900 transition-colors">Monthly</Link>
+            <Link href="/attendance/remote-locations" className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-white hover:text-gray-900 transition-colors">Remote</Link>
           </div>
         </div>
         <div className="flex gap-3 flex-wrap">

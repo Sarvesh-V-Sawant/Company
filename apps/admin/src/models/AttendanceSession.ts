@@ -12,6 +12,9 @@ export interface ICheckInData extends IGeoPoint {
   deviceFingerprint: string;
   nonce: string;
   isWithinGeoFence: boolean;
+  address?: string | null;
+  geocodingStatus?: string;
+  geocodingProvider?: string | null;
 }
 
 export interface ICheckOutData {
@@ -50,6 +53,10 @@ export interface IAttendanceSession extends Document {
 
   flags: IAttendanceFlags;
 
+  isRemote: boolean;
+  remoteSource?: 'employeeOverride' | 'workAwayApproval';
+  remoteApprovalId?: mongoose.Types.ObjectId;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +71,9 @@ const CheckInSchema = new Schema<ICheckInData>(
     deviceFingerprint:  { type: String, required: true },
     nonce:              { type: String, required: true },
     isWithinGeoFence:   { type: Boolean, required: true },
+    address:            { type: String, default: null },
+    geocodingStatus:    { type: String },
+    geocodingProvider:  { type: String, default: null },
   },
   { _id: false },
 );
@@ -111,6 +121,10 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
       required: true,
       default: () => ({ lowGpsAccuracy: false, outsideGeoFence: false, suspiciousTimestamp: false, possibleMockGps: false }),
     },
+
+    isRemote:        { type: Boolean, required: true, default: false },
+    remoteSource:    { type: String, enum: ['employeeOverride', 'workAwayApproval'] },
+    remoteApprovalId: { type: Schema.Types.ObjectId, ref: 'Regularization' },
   },
   { timestamps: true },
 );

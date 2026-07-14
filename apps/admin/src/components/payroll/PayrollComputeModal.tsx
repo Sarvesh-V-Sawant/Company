@@ -30,10 +30,15 @@ export default function PayrollComputeModal({ open, onClose, onSuccess, defaultY
     await new Promise(r => setTimeout(r, 350));
     setStage('computing');
     try {
-      const res = await apiFetch<{ success: boolean; data?: ComputeResult }>('/api/v1/payroll/compute', {
+      const res = await apiFetch<{ success: boolean; data?: ComputeResult; error?: { code: string; message: string } }>('/api/v1/payroll/compute', {
         method: 'POST',
         body: JSON.stringify({ yearMonth }),
       });
+      if (!res.success) {
+        setErrorMsg(res.error?.message ?? 'Payroll computation failed.');
+        setStage('error');
+        return;
+      }
       const data: ComputeResult = res.data ?? { computed: 0, failed: 0 };
       setResult(data);
       if (data.failed > 0 && data.computed > 0) {

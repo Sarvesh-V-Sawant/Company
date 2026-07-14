@@ -32,3 +32,7 @@ export { PasswordResetToken } from './PasswordResetToken';
 export type { IPasswordResetToken } from './PasswordResetToken';
 export { FcmToken } from './FcmToken';
 export type { IFcmToken } from './FcmToken';
+export { LocationSnapshot } from './LocationSnapshot';
+export type { ILocationSnapshot } from './LocationSnapshot';
+export { PayrollLock } from './PayrollLock';
+export type { IPayrollLock } from './PayrollLock';

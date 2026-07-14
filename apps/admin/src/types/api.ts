@@ -71,16 +71,43 @@ export interface PayrollRecord {
   employeeId: string | Employee;
   yearMonth: string;
   status: PayrollStatus;
-  workingDays?: number;
+  // UI/mobile aliases (returned by formatRecord)
+  workingDays: number;
   presentDays: number;
   absentDays: number;
-  leaveDays?: number;
-  halfDays?: number;
+  leaveDays: number;
+  halfDays: number;
   lopDays: number;
   grossSalary: number;
   netSalary: number;
   deductions: number;
-  isStale?: boolean;
+  earnings: Record<string, number>;
+  isStale: boolean;
+  // Internal names also returned
+  effectiveWorkingDays: number;
+  effectivePresentDays: number;
+  effectiveLwpDays: number;
+  paidLeaveDays: number;
+  halfDayLwpDays: number;
+  perDaySalary: number;
+  deductionBreakdown: {
+    lwpDeduction: number;
+    absentDeduction: number;
+    manualDeduction: number;
+    totalDeductions: number;
+  };
+  manualDeduction: number;
+  manualDeductionRemark: string;
+  employeeSnapshot: {
+    firstName: string;
+    lastName: string;
+    employeeId: string;
+    department?: string;
+    designation?: string;
+    monthlySalary: number;
+  };
+  computedAt: string;
+  finalisedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

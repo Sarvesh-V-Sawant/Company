@@ -5,6 +5,7 @@ import { RegularizationService } from '@services/RegularizationService';
 import { AppError } from '@services/AuthService';
 import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { apiError, success } from '@lib/utils/api-response';
+import { regularizationLimiter, checkRateLimit } from '@mw/rateLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (err instanceof AuthError) return apiError(err.code, 'Unauthorized.', err.httpStatus);
     throw err;
   }
+
+  const limited = await checkRateLimit(regularizationLimiter, payload.userId);
+  if (limited) return limited;
 
   let body: unknown;
   try { body = await request.json(); }

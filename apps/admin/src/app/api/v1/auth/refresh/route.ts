@@ -5,10 +5,14 @@ import { RefreshSchema } from '@validators/auth';
 export const dynamic = 'force-dynamic';
 import { AuthService, AppError } from '@services/AuthService';
 import { success, apiError } from '@lib/utils/api-response';
+import { refreshLimiter, getClientIp, checkRateLimit } from '@mw/rateLimiter';
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = await checkRateLimit(refreshLimiter, getClientIp(request));
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();

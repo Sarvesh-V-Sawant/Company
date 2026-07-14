@@ -4,6 +4,7 @@ import '../network/api_client.dart';
 import '../network/interceptors/auth_interceptor.dart';
 import '../network/interceptors/idempotency_interceptor.dart';
 import '../network/interceptors/logging_interceptor.dart';
+import '../../features/attendance/data/sources/location_snapshot_source.dart';
 import '../../features/notifications/data/services/fcm_service.dart';
 
 // Fires true when refresh token fails — consumed by router to push /session-expired
@@ -35,4 +36,8 @@ final dioProvider = Provider<Dio>((ref) {
 
 final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(ref.watch(dioProvider));
+});
+
+final locationSnapshotSourceProvider = Provider<LocationSnapshotSource>((ref) {
+  return LocationSnapshotSource(ref.watch(dioProvider));
 });

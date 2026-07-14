@@ -580,6 +580,7 @@ export class RegularizationService {
     }
 
     if (query.status) filter.status = query.status;
+    if (query.type) filter.type = query.type;
     if (query.startDate || query.endDate) {
       const range: Record<string, string> = {};
       if (query.startDate) range.$gte = query.startDate;

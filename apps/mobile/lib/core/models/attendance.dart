@@ -17,8 +17,20 @@ class AttendanceSession {
   final int? durationMinutes;
   final AttendanceCheckInLocation? checkInLocation;
   final bool closedBySystem;
+  final bool isRemote;
+  final String? remoteSource;
+  final String? checkInAddress;
 
-  const AttendanceSession({this.checkIn, this.checkOut, this.durationMinutes, this.checkInLocation, this.closedBySystem = false});
+  const AttendanceSession({
+    this.checkIn,
+    this.checkOut,
+    this.durationMinutes,
+    this.checkInLocation,
+    this.closedBySystem = false,
+    this.isRemote = false,
+    this.remoteSource,
+    this.checkInAddress,
+  });
 
   factory AttendanceSession.fromJson(Map<String, dynamic> json) {
     final locJson = json['checkInLocation'] as Map<String, dynamic>?;
@@ -28,6 +40,9 @@ class AttendanceSession {
       durationMinutes: json['durationMinutes'] as int?,
       checkInLocation: locJson != null ? AttendanceCheckInLocation.fromJson(locJson) : null,
       closedBySystem: json['closedBySystem'] as bool? ?? false,
+      isRemote: json['isRemote'] as bool? ?? false,
+      remoteSource: json['remoteSource'] as String?,
+      checkInAddress: json['checkInAddress'] as String?,
     );
   }
 }

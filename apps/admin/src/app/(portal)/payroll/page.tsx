@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Lock, Unlock } from 'lucide-react';
+import useSWR from 'swr';
 import AdminLayout from '@components/layout/AdminLayout';
 import { Button } from '@components/ui/button';
 import { Input } from '@components/ui/input';
@@ -15,24 +16,28 @@ import PayrollComputeModal from '@components/payroll/PayrollComputeModal';
 import PayrollFinalizeModal from '@components/payroll/PayrollFinalizeModal';
 import PayrollUnfinalizeModal from '@components/payroll/PayrollUnfinalizeModal';
 import PayrollReopenWizard from '@components/payroll/PayrollReopenWizard';
+import PayrollLockModal from '@components/payroll/PayrollLockModal';
 import { usePayroll } from '@/hooks/usePayroll';
 import { usePagination } from '@/hooks/usePagination';
-import type { PayrollRecord, Employee } from '@/types/api';
+import { apiFetch } from '@lib/utils/api-client';
+import type { PayrollRecord } from '@/types/api';
 
 function empName(r: PayrollRecord) {
-  if (typeof r.employeeId === 'object' && r.employeeId !== null) {
-    const e = r.employeeId as Employee; return `${e.firstName} ${e.lastName}`;
-  }
-  return String(r.employeeId);
+  const s = r.employeeSnapshot;
+  return s ? `${s.firstName} ${s.lastName}` : '—';
 }
 
 function fmt(n: number) { return new Intl.NumberFormat('en-IN').format(n); }
+
+interface LockStatus { success: boolean; data: { isLocked: boolean; lockedAt?: string } }
 
 type ModalState =
   | { type: 'compute' }
   | { type: 'finalize'; record: PayrollRecord }
   | { type: 'unfinalize'; record: PayrollRecord }
   | { type: 'reopen'; record: PayrollRecord }
+  | { type: 'lock' }
+  | { type: 'unlock' }
   | null;
 
 export default function PayrollPage() {
@@ -45,6 +50,12 @@ export default function PayrollPage() {
   const status    = params.get('status') ?? '';
   const query     = buildQuery({ yearMonth: yearMonth || undefined, status: status || undefined });
   const { payroll, pagination, isLoading, refresh } = usePayroll(query);
+
+  const { data: lockData, mutate: refreshLock } = useSWR<LockStatus>(
+    yearMonth ? `/api/v1/payroll/lock?yearMonth=${yearMonth}` : null,
+    (url: string) => apiFetch<LockStatus>(url),
+  );
+  const isLocked = lockData?.data?.isLocked ?? false;
 
   const staleRecords = payroll.filter(r => r.isStale);
 
@@ -86,13 +97,36 @@ export default function PayrollPage() {
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Input type="month" value={yearMonth} onChange={e => updateParam('yearMonth', e.target.value)} className="w-44" />
           <Select value={status} onChange={e => updateParam('status', e.target.value)} className="w-36">
             <option value="">All Status</option>
             <option value="draft">Draft</option>
             <option value="finalised">Finalised</option>
           </Select>
+          {yearMonth && (
+            <div className="flex items-center gap-2">
+              {isLocked ? (
+                <>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                    <Lock className="h-3 w-3" /> Locked
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => setModal({ type: 'unlock' })}>
+                    <Unlock className="h-3.5 w-3.5 mr-1" /> Unlock
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                    <Unlock className="h-3 w-3" /> Unlocked
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => setModal({ type: 'lock' })}>
+                    <Lock className="h-3.5 w-3.5 mr-1" /> Lock Month
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -207,6 +241,15 @@ export default function PayrollPage() {
           payrollId={modal.record.id}
           yearMonth={modal.record.yearMonth}
           employeeName={empName(modal.record)}
+        />
+      )}
+      {(modal?.type === 'lock' || modal?.type === 'unlock') && yearMonth && (
+        <PayrollLockModal
+          open
+          mode={modal.type}
+          yearMonth={yearMonth}
+          onClose={() => setModal(null)}
+          onSuccess={() => { setModal(null); refreshLock(); refresh(); }}
         />
       )}
     </AdminLayout>

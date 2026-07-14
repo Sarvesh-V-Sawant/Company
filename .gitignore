@@ -7,9 +7,10 @@
 ############################
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
 !.env.template
-!.env.local
 
 ############################
 # Node.js

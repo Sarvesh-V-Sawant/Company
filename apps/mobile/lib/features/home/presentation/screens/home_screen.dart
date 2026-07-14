@@ -465,6 +465,7 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activeSession = today?.sessions.where((s) => s.checkOut == null).firstOrNull;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -493,17 +494,58 @@ class _StatusCard extends StatelessWidget {
                   Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
                   const SizedBox(width: 8),
                   const Text('Checked In', style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF16A34A))),
+                  if (activeSession?.isRemote == true) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                      child: const Text('Remote', style: TextStyle(fontSize: 11, color: Color(0xFF6366F1), fontWeight: FontWeight.w600)),
+                    ),
+                  ],
                 ]),
                 if (today?.currentSessionStart != null) ...[
                   const SizedBox(height: 4),
                   Text('Since ${_formatTime(today!.currentSessionStart!)}', style: const TextStyle(color: Colors.grey)),
                 ],
+                Builder(builder: (_) {
+                  final addr = today?.sessions.where((s) => s.checkOut == null).firstOrNull?.checkInAddress;
+                  if (addr == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Icon(Icons.location_on_outlined, size: 12, color: Colors.grey),
+                      const SizedBox(width: 3),
+                      Expanded(child: Text(addr, style: const TextStyle(fontSize: 11, color: Colors.grey))),
+                    ]),
+                  );
+                }),
                 const Divider(height: 16),
                 if (elapsedMinutes < requiredDailyMinutes)
                   Text('${_fmtMin(requiredDailyMinutes - elapsedMinutes)} remaining', style: TextStyle(fontSize: 14, color: elapsedMinutes >= requiredDailyMinutes - 30 ? const Color(0xFF16A34A) : const Color(0xFFD97706)))
                 else ...[
                   const Text('Shift completed', style: TextStyle(fontSize: 14, color: Color(0xFF16A34A))),
                   Text('Overtime: ${_fmtMin(elapsedMinutes - requiredDailyMinutes)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+                if (activeSession?.isRemote == true) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.25)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6366F1)),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          'Remote session active. Location will be recorded periodically while checked in.',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF6366F1)),
+                        ),
+                      ),
+                    ]),
+                  ),
                 ],
               ],
             ),
@@ -627,7 +669,17 @@ class _TodaysSessions extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Session ${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                Row(children: [
+                  Text('Session ${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                  if (e.value.isRemote) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                      child: const Text('Remote', style: TextStyle(fontSize: 11, color: Color(0xFF6366F1), fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ]),
                 Text('In: ${_fmt(e.value.checkIn)} · Out: ${e.value.checkOut != null ? _fmt(e.value.checkOut) : '—'}'),
                 if (e.value.durationMinutes != null) Text('Duration: ${e.value.durationMinutes! ~/ 60}h ${e.value.durationMinutes! % 60}m', style: const TextStyle(color: Colors.grey)),
               ],

@@ -44,19 +44,34 @@ class DailyDetailScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Session ${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                          Row(children: [
+                            Text('Session ${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                            if (e.value.isRemote) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                                child: const Text('Remote', style: TextStyle(fontSize: 11, color: Color(0xFF6366F1), fontWeight: FontWeight.w600)),
+                              ),
+                            ],
+                          ]),
                           if (e.value.checkIn != null) Text('In:  ${_fmtFull(e.value.checkIn)}'),
                           if (e.value.checkOut != null) Text('Out: ${_fmtFull(e.value.checkOut)}'),
                           if (e.value.durationMinutes != null) Text('Duration: ${e.value.durationMinutes! ~/ 60}h ${e.value.durationMinutes! % 60}m', style: const TextStyle(color: Colors.grey)),
                           if (e.value.checkInLocation != null) ...[
                             const SizedBox(height: 4),
-                            Row(children: [
+                            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
                               const SizedBox(width: 4),
-                              Text(
-                                '${e.value.checkInLocation!.latitude.toStringAsFixed(5)}, ${e.value.checkInLocation!.longitude.toStringAsFixed(5)}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                if (e.value.checkInAddress != null)
+                                  Text(e.value.checkInAddress!, style: const TextStyle(fontSize: 12, color: Colors.grey))
+                                else
+                                  Text(
+                                    '${e.value.checkInLocation!.latitude.toStringAsFixed(5)}, ${e.value.checkInLocation!.longitude.toStringAsFixed(5)}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                              ])),
                             ]),
                           ],
                         ]),

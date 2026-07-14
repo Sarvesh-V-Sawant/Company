@@ -39,7 +39,7 @@ class PayslipRecord {
 
   factory PayslipRecord.fromJson(Map<String, dynamic> json) {
     return PayslipRecord(
-      id: json['_id'] as String? ?? '',
+      id: json['id'] as String? ?? '',
       employeeId: _extractId(json['employeeId']),
       yearMonth: json['yearMonth'] as String? ?? '',
       status: json['status'] as String? ?? 'draft',

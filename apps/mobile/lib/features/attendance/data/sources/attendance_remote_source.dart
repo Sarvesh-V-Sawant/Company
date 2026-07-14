@@ -27,6 +27,9 @@ class AttendanceRemoteSource {
           'checkOut': m['checkOutTimestamp'],
           'durationMinutes': m['durationMinutes'],
           'closedBySystem': m['closedBySystem'],
+          'isRemote': m['isRemote'],
+          'remoteSource': m['remoteSource'],
+          'checkInAddress': m['checkInAddress'],
         };
       }).toList(),
       'totalMinutesToday': summary['totalMinutes'] ?? 0,

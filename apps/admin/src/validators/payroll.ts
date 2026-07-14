@@ -36,8 +36,19 @@ export const AdjustPayrollSchema = z.object({
   }
 });
 
+export const LockPayrollSchema = z.object({
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/, 'Must be YYYY-MM format'),
+});
+
+export const UnlockPayrollSchema = z.object({
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/, 'Must be YYYY-MM format'),
+  reason:    z.string().min(10, 'Reason must be at least 10 characters').max(500),
+});
+
 export type ComputePayrollInput    = z.infer<typeof ComputePayrollSchema>;
 export type PayrollListQuery       = z.infer<typeof PayrollListQuerySchema>;
 export type PayrollMeQuery         = z.infer<typeof PayrollMeQuerySchema>;
 export type UnfinalisePayrollInput = z.infer<typeof UnfinalisePayrollSchema>;
 export type AdjustPayrollInput     = z.infer<typeof AdjustPayrollSchema>;
+export type LockPayrollInput       = z.infer<typeof LockPayrollSchema>;
+export type UnlockPayrollInput     = z.infer<typeof UnlockPayrollSchema>;

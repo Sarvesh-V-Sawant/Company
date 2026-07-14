@@ -13,19 +13,18 @@ import PayrollFinalizeModal from '@components/payroll/PayrollFinalizeModal';
 import PayrollUnfinalizeModal from '@components/payroll/PayrollUnfinalizeModal';
 import useSWR from 'swr';
 import { apiFetch, apiFetchBlob } from '@lib/utils/api-client';
-import type { PayrollRecord, Employee } from '@/types/api';
+import type { PayrollRecord } from '@/types/api';
 
 interface Res { success: boolean; data: PayrollRecord }
+interface AdjRes { success: boolean; error?: { code: string; message: string } }
 
 function fmtCurrency(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
 function empName(r: PayrollRecord) {
-  if (typeof r.employeeId === 'object' && r.employeeId !== null) {
-    const e = r.employeeId as Employee; return `${e.firstName} ${e.lastName}`;
-  }
-  return String(r.employeeId);
+  const s = r.employeeSnapshot;
+  return s ? `${s.firstName} ${s.lastName}` : '—';
 }
 
 type Modal = 'finalize' | 'unfinalize' | null;
@@ -33,6 +32,9 @@ type Modal = 'finalize' | 'unfinalize' | null;
 export default function PayslipDetailPage() {
   const { yearMonth, id } = useParams<{ yearMonth: string; id: string }>();
   const [modal, setModal] = useState<Modal>(null);
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjRemark, setAdjRemark] = useState('');
+  const [adjLoading, setAdjLoading] = useState(false);
 
   const { data, isLoading, mutate } = useSWR(
     `/api/v1/payroll/${id}/${yearMonth}`,
@@ -42,15 +44,46 @@ export default function PayslipDetailPage() {
 
   const handleExport = async () => {
     try {
-      const blob = await apiFetchBlob(`/api/v1/payroll/${id}/${yearMonth}/export`);
+      const blob = await apiFetchBlob(`/api/v1/payroll/${id}/${yearMonth}/export?format=xlsx`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `payslip-${yearMonth}-${id}.pdf`;
+      a.download = `payslip-${yearMonth}-${id}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
       toast.error('Export failed');
+    }
+  };
+
+  const handleAdjust = async () => {
+    const amount = parseFloat(adjAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast.error('Deduction amount must be 0 or greater.');
+      return;
+    }
+    if (amount > 0 && !adjRemark.trim()) {
+      toast.error('Remark is required when deduction amount is greater than zero.');
+      return;
+    }
+    setAdjLoading(true);
+    try {
+      const result = await apiFetch<AdjRes>(`/api/v1/payroll/${id}/${yearMonth}/adjust`, {
+        method: 'PATCH',
+        body: JSON.stringify({ manualDeduction: amount, remark: adjRemark.trim() }),
+      });
+      if (!result.success) {
+        toast.error(result.error?.message ?? 'Failed to update manual deduction.');
+        return;
+      }
+      toast.success('Manual deduction updated.');
+      setAdjAmount('');
+      setAdjRemark('');
+      mutate();
+    } catch {
+      toast.error('Failed to update manual deduction.');
+    } finally {
+      setAdjLoading(false);
     }
   };
 
@@ -77,7 +110,7 @@ export default function PayslipDetailPage() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Button variant="outline" size="sm" onClick={handleExport}>
-                  <Download className="h-4 w-4 mr-1.5" /> Export PDF
+                  <Download className="h-4 w-4 mr-1.5" /> Export XLSX
                 </Button>
                 {r.status === 'draft' && (
                   <Button size="sm" onClick={() => setModal('finalize')}>Finalise</Button>
@@ -100,12 +133,12 @@ export default function PayslipDetailPage() {
                 <p className="text-xs font-medium text-gray-500 uppercase mb-3">Attendance Summary</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
-                    { label: 'Working Days',  value: r.workingDays },
-                    { label: 'Present Days',  value: r.presentDays },
-                    { label: 'Absent Days',   value: r.absentDays  },
-                    { label: 'Leave Days',    value: r.leaveDays   },
-                    { label: 'Half Days',     value: r.halfDays    },
-                    { label: 'LWP Days',      value: r.lopDays     },
+                    { label: 'Working Days', value: r.workingDays },
+                    { label: 'Present Days', value: r.presentDays },
+                    { label: 'Absent Days',  value: r.absentDays  },
+                    { label: 'Leave Days',   value: r.leaveDays   },
+                    { label: 'Half Days',    value: r.halfDays    },
+                    { label: 'LWP Days',     value: r.lopDays     },
                   ].filter(i => i.value !== undefined).map(({ label, value }) => (
                     <div key={label} className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500">{label}</p>
@@ -122,8 +155,14 @@ export default function PayslipDetailPage() {
                   <span className="text-sm text-gray-600">Gross Salary</span>
                   <span className="text-sm text-gray-900">{fmtCurrency(r.grossSalary)}</span>
                 </div>
+                {r.manualDeduction > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-sm text-gray-600">Manual Deduction</span>
+                    <span className="text-sm text-red-600">−{fmtCurrency(r.manualDeduction)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-sm text-gray-600">Deductions</span>
+                  <span className="text-sm text-gray-600">Total Deductions</span>
                   <span className="text-sm text-red-600">−{fmtCurrency(r.deductions)}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-t border-gray-100 mt-1">
@@ -132,10 +171,45 @@ export default function PayslipDetailPage() {
                 </div>
               </div>
 
+              {/* Manual deduction — draft only */}
+              {r.status === 'draft' && (
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-3">Manual Deduction</p>
+                  {r.manualDeduction > 0 && (
+                    <p className="text-xs text-gray-500 mb-3">
+                      Current: {fmtCurrency(r.manualDeduction)}
+                      {r.manualDeductionRemark ? ` — ${r.manualDeductionRemark}` : ''}
+                    </p>
+                  )}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={adjAmount}
+                      onChange={e => setAdjAmount(e.target.value)}
+                      placeholder="Amount (0 to clear)"
+                      className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={adjRemark}
+                      onChange={e => setAdjRemark(e.target.value)}
+                      placeholder="Remark (required if amount > 0)"
+                      maxLength={200}
+                      className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Button size="sm" disabled={adjLoading} onClick={handleAdjust}>
+                      {adjLoading ? 'Saving…' : 'Apply'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Timestamps */}
               <div className="border-t border-gray-100 pt-3 text-xs text-gray-400 space-y-0.5">
-                <p>Computed: {format(parseISO(r.createdAt), 'dd MMM yyyy HH:mm')}</p>
-                <p>Last updated: {format(parseISO(r.updatedAt), 'dd MMM yyyy HH:mm')}</p>
+                {r.computedAt && <p>Computed: {format(parseISO(r.computedAt), 'dd MMM yyyy HH:mm')}</p>}
+                {r.finalisedAt && <p>Finalised: {format(parseISO(r.finalisedAt), 'dd MMM yyyy HH:mm')}</p>}
               </div>
             </div>
           </>

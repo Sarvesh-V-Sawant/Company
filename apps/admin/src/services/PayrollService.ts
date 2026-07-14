@@ -17,6 +17,7 @@ import type { IEmployee } from '@models/Employee';
 import type { IUser } from '@models/User';
 import type { ICompanySettings } from '@models/CompanySettings';
 import type { PayrollListQuery, PayrollMeQuery } from '@validators/payroll';
+import { PayrollLockService } from '@services/PayrollLockService';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ function formatRecord(r: IPayrollRecord & { _id: mongoose.Types.ObjectId }) {
     yearMonth:             r.yearMonth,
     status:                r.status,
     employeeSnapshot:      r.employeeSnapshot,
+    // Internal names (preserved for backwards compat)
     effectiveWorkingDays:  r.effectiveWorkingDays,
     effectivePresentDays:  r.effectivePresentDays,
     halfDays:              r.halfDays,
@@ -41,6 +43,14 @@ function formatRecord(r: IPayrollRecord & { _id: mongoose.Types.ObjectId }) {
     netSalary:             r.netSalary,
     computedAt:            r.computedAt.toISOString(),
     finalisedAt:           r.finalisedAt?.toISOString() ?? null,
+    // UI/mobile aliases
+    workingDays:  r.effectiveWorkingDays,
+    presentDays:  r.effectivePresentDays,
+    lopDays:      r.effectiveLwpDays,
+    leaveDays:    r.paidLeaveDays,
+    deductions:   r.deductionBreakdown.totalDeductions,
+    earnings:     { 'Gross Salary': r.grossSalary } as Record<string, number>,
+    isStale:      (r.staleEmployeeIds?.length ?? 0) > 0,
   };
 }
 
@@ -200,6 +210,7 @@ export class PayrollService {
 
   static async compute(params: { yearMonth: string; employeeId?: string; actorId: string }) {
     await connectDB();
+    await PayrollLockService.assertUnlocked(params.yearMonth);
 
     const currentYearMonth = getCurrentMonthIST();
     if (params.yearMonth > currentYearMonth) {
@@ -246,6 +257,7 @@ export class PayrollService {
 
   static async finalise(params: { employeeId: string; yearMonth: string; adminId: string }) {
     await connectDB();
+    await PayrollLockService.assertUnlocked(params.yearMonth);
     const employeeOid = new mongoose.Types.ObjectId(params.employeeId);
 
     const existing = await PayrollRecord.findOne({ employeeId: employeeOid, yearMonth: params.yearMonth }).lean() as unknown as (IPayrollRecord & { _id: mongoose.Types.ObjectId }) | null;
@@ -304,6 +316,7 @@ export class PayrollService {
 
   static async unfinalise(params: { employeeId: string; yearMonth: string; adminId: string; reason: string }) {
     await connectDB();
+    await PayrollLockService.assertUnlocked(params.yearMonth);
     const employeeOid = new mongoose.Types.ObjectId(params.employeeId);
 
     const existing = await PayrollRecord.findOne({ employeeId: employeeOid, yearMonth: params.yearMonth }).lean() as unknown as (IPayrollRecord & { _id: mongoose.Types.ObjectId }) | null;
@@ -421,6 +434,7 @@ export class PayrollService {
     adminId:         string;
   }) {
     await connectDB();
+    await PayrollLockService.assertUnlocked(params.yearMonth);
     const employeeOid = new mongoose.Types.ObjectId(params.employeeId);
 
     const existing = await PayrollRecord.findOne({ employeeId: employeeOid, yearMonth: params.yearMonth }).lean() as unknown as (IPayrollRecord & { _id: mongoose.Types.ObjectId }) | null;

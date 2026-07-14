@@ -33,10 +33,12 @@ class ApiEndpoints {
   static const String notificationsReadAll = '/api/v1/notifications/read-all';
 
   static const String payrollMe = '/api/v1/payroll/me';
-  static String payslipById(String id) => '/api/v1/payroll/$id';
+  static String payslipById(String yearMonth) => '/api/v1/payroll/me/$yearMonth';
 
   static const String settings = '/api/v1/settings';
 
   static const String deviceRequest = '/api/v1/auth/device-request';
   static const String deviceRequestStatus = '/api/v1/auth/device-request/status';
+
+  static const String locationSnapshot = '/api/v1/attendance/location-snapshot';
 }

@@ -27,7 +27,7 @@ class PayslipListScreen extends ConsumerWidget {
               itemBuilder: (_, i) {
                 final p = payslips[i];
                 return ListTile(
-                  onTap: () => context.push(RouteNames.payslipDetail(p.id)),
+                  onTap: () => context.push(RouteNames.payslipDetail(p.yearMonth)),
                   title: Text(_fmtYearMonth(p.yearMonth)),
                   subtitle: Text('Net: ₹${p.netSalary.toStringAsFixed(2)}'),
                   trailing: StatusChip(status: p.status),

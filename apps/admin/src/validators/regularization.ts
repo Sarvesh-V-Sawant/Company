@@ -34,6 +34,7 @@ export const RejectRegularizationSchema = z.object({
 export const RegularizationListQuerySchema = z.object({
   employeeId: z.string().optional(),
   status:     z.enum(REGULARIZATION_STATUSES).optional(),
+  type:       z.enum(REGULARIZATION_TYPES).optional(),
   startDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   endDate:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   page:       z.coerce.number().int().min(1).default(1),

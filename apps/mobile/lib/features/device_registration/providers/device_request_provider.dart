@@ -59,10 +59,10 @@ class DeviceRequestNotifier extends StateNotifier<DeviceRequestState> {
         state = state.copyWith(status: DeviceRequestStatus.pending);
         _startPolling(email: email, deviceFingerprint: deviceFingerprint);
       }
-    } catch (e) {
+    } catch (_) {
       state = state.copyWith(
         status: DeviceRequestStatus.error,
-        errorMessage: e.toString(),
+        errorMessage: 'Request failed. Check your connection and try again.',
       );
     }
   }

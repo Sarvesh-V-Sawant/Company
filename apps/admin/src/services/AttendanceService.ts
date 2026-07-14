@@ -13,10 +13,13 @@ import { AttendanceSession } from '@models/AttendanceSession';
 import { UsedNonce } from '@models/UsedNonce';
 import { Holiday } from '@models/Holiday';
 import { AuditLog } from '@models/AuditLog';
+import { Regularization } from '@models/Regularization';
+import type { IRegularization } from '@models/Regularization';
 import { AppError } from '@services/AuthService';
 import type { ICompanySettings } from '@models/CompanySettings';
 import type { IAttendanceDay, AttendanceDayStatus } from '@models/AttendanceDay';
 import type { WeekDay } from '@app-types/enums';
+import { GeocodingService } from '@services/GeocodingService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,18 +70,23 @@ function deriveDayStatus(
 /** Format a session for API responses. */
 function formatSession(s: {
   _id: mongoose.Types.ObjectId;
-  checkIn: { timestamp: Date; latitude: number; longitude: number };
+  checkIn: { timestamp: Date; latitude: number; longitude: number; address?: string | null; geocodingStatus?: string };
   checkOut: { timestamp: Date } | null;
   durationMinutes: number | null;
   closedBySystem: boolean;
+  isRemote: boolean;
+  remoteSource?: string;
 }) {
   return {
     sessionId: s._id.toHexString(),
     checkInTimestamp: s.checkIn.timestamp.toISOString(),
     checkInLocation: { latitude: s.checkIn.latitude, longitude: s.checkIn.longitude },
+    checkInAddress: s.checkIn.address ?? null,
     checkOutTimestamp: s.checkOut ? s.checkOut.timestamp.toISOString() : null,
     durationMinutes: s.durationMinutes ?? 0,
     closedBySystem: s.closedBySystem,
+    isRemote: s.isRemote,
+    ...(s.remoteSource !== undefined && { remoteSource: s.remoteSource }),
   };
 }
 
@@ -198,6 +206,27 @@ export class AttendanceService {
     const localHHMM  = toLocalHHMM(serverTime, timezone);
     const dayOfWeek  = toLocalDayOfWeek(serverTime, timezone);
 
+    // Determine whether this session is remote and why the geofence was bypassed
+    let isRemote = false;
+    let remoteSource: 'employeeOverride' | 'workAwayApproval' | undefined;
+    let remoteApprovalId: mongoose.Types.ObjectId | undefined;
+
+    if (!isWithinGeoFence && bypassGeofence) {
+      isRemote = true;
+      const workAwayReg = await Regularization.findOne({
+        employeeId: new mongoose.Types.ObjectId(input.employeeId),
+        dateString,
+        type: { $in: ['workAwayFromOffice', 'officialTravel', 'clientVisit'] },
+        status: 'approved',
+      }).lean() as unknown as (IRegularization & { _id: mongoose.Types.ObjectId }) | null;
+      if (workAwayReg) {
+        remoteSource = 'workAwayApproval';
+        remoteApprovalId = workAwayReg._id;
+      } else {
+        remoteSource = 'employeeOverride';
+      }
+    }
+
     // Weekend check
     const isWeekend = !settings.workingDays.includes(dayOfWeek);
 
@@ -281,6 +310,9 @@ export class AttendanceService {
                   suspiciousTimestamp: false,
                   possibleMockGps,
                 },
+                isRemote,
+                ...(remoteSource !== undefined && { remoteSource }),
+                ...(remoteApprovalId !== undefined && { remoteApprovalId }),
               },
             ],
             { session: mongoSession },
@@ -295,17 +327,31 @@ export class AttendanceService {
       await mongoSession.endSession();
     }
 
+    // Fire-and-forget reverse geocoding — never blocks check-in response
+    const sessionIdForGeo = (sessionDoc!._id as mongoose.Types.ObjectId).toHexString();
+    GeocodingService.reverseGeocode(input.latitude, input.longitude)
+      .then((geo) =>
+        AttendanceSession.findByIdAndUpdate(sessionIdForGeo, {
+          $set: {
+            'checkIn.address': geo.address,
+            'checkIn.geocodingStatus': geo.geocodingStatus,
+            'checkIn.geocodingProvider': geo.geocodingProvider,
+          },
+        }),
+      )
+      .catch(() => {});
+
     // Audit log
     await AuditLog.create({
       performedBy: new mongoose.Types.ObjectId(input.employeeId),
       action: 'ATTENDANCE_CHECKIN',
       targetType: 'AttendanceSession',
-      targetId: (sessionDoc!._id as mongoose.Types.ObjectId).toHexString(),
+      targetId: sessionIdForGeo,
       changes: { dateString, latitude: input.latitude, longitude: input.longitude },
     });
 
     return {
-      sessionId: (sessionDoc!._id as mongoose.Types.ObjectId).toHexString(),
+      sessionId: sessionIdForGeo,
       checkInTimestamp: serverTime.toISOString(),
       dateString,
       status: 'checked-in' as const,
@@ -456,9 +502,12 @@ export class AttendanceService {
     const sessions = allSessions.map((s) => ({
       sessionId: (s._id as mongoose.Types.ObjectId).toHexString(),
       checkInTimestamp: s.checkIn.timestamp.toISOString(),
+      checkInAddress: s.checkIn.address ?? null,
       checkOutTimestamp: s.checkOut ? s.checkOut.timestamp.toISOString() : null,
       durationMinutes: s.isActive ? runningMinutes : (s.durationMinutes ?? 0),
       closedBySystem: s.closedBySystem,
+      isRemote: s.isRemote,
+      ...(s.remoteSource !== undefined && { remoteSource: s.remoteSource }),
     }));
 
     return {
@@ -473,8 +522,11 @@ export class AttendanceService {
               latitude: activeSession.checkIn.latitude,
               longitude: activeSession.checkIn.longitude,
             },
+            checkInAddress: activeSession.checkIn.address ?? null,
             elapsedMinutes: runningMinutes,
             remainingMinutes: forgotCheckout ? 0 : Math.max(0, requiredMinutes - totalMinutes - runningMinutes),
+            isRemote: activeSession.isRemote,
+            ...(activeSession.remoteSource !== undefined && { remoteSource: activeSession.remoteSource }),
           }
         : null,
       todaySummary: {
@@ -495,24 +547,64 @@ export class AttendanceService {
 
     const settings = await CompanySettings.findById('company-settings').lean() as ICompanySettings | null;
     const timezone = settings?.timezone || 'Asia/Kolkata';
+    const workingDays: WeekDay[] = settings?.workingDays ?? [];
 
-    const filter: Record<string, unknown> = {
-      employeeId: new mongoose.Types.ObjectId(employeeId),
+    const empObjectId = new mongoose.Types.ObjectId(employeeId);
+    const todayStr = toLocalDateString(new Date(), timezone);
+
+    // Fetch all existing days in range un-paginated (range is ≤ 31 days)
+    const existingDays = await AttendanceDay.find({
+      employeeId: empObjectId,
       dateString: { $gte: query.startDate, $lte: query.endDate },
-    };
-    if (query.status) filter.status = query.status;
+    }).sort({ dateString: 1 }).lean();
 
-    const [days, total] = await Promise.all([
-      AttendanceDay.find(filter)
-        .sort({ dateString: 1 })
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit)
-        .lean(),
-      AttendanceDay.countDocuments(filter),
-    ]);
+    // Holidays in range — exclude from synthetic absent generation
+    const holidays = await Holiday.find({
+      dateString: { $gte: query.startDate, $lte: query.endDate },
+    }).select('dateString').lean();
+    const holidaySet = new Set(holidays.map((h) => h.dateString));
 
-    const dayIds = days.map((d) => (d._id as mongoose.Types.ObjectId));
-    const sessions = await AttendanceSession.find({ attendanceDayId: { $in: dayIds } })
+    const existingByDate = new Map(existingDays.map((d) => [d.dateString, d]));
+
+    // Build merged list: real docs + synthetic absent for past working days with no doc
+    type RealEntry = { real: true; doc: typeof existingDays[0] };
+    type SyntheticEntry = { real: false; dateString: string };
+    const merged: Array<RealEntry | SyntheticEntry> = [];
+
+    // Iterate at noon UTC so no timezone boundary can flip the calendar date
+    const cursor = new Date(query.startDate + 'T12:00:00Z');
+    const endLimit = new Date(query.endDate + 'T12:00:00Z');
+    while (cursor <= endLimit) {
+      const ds = toLocalDateString(cursor, timezone);
+      if (existingByDate.has(ds)) {
+        merged.push({ real: true, doc: existingByDate.get(ds)! });
+      } else if (ds <= todayStr && !holidaySet.has(ds)) {
+        const dow = toLocalDayOfWeek(cursor, timezone);
+        if (workingDays.includes(dow)) {
+          merged.push({ real: false, dateString: ds });
+        }
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    // Apply optional status filter
+    const filtered = query.status
+      ? merged.filter((item) =>
+          item.real
+            ? (item as RealEntry).doc.status === query.status
+            : query.status === 'absent',
+        )
+      : merged;
+
+    const total = filtered.length;
+    const paginated = filtered.slice((query.page - 1) * query.limit, query.page * query.limit);
+
+    // Load sessions only for real days on this page
+    const realPageDayIds = paginated
+      .filter((item): item is RealEntry => item.real)
+      .map((item) => item.doc._id as mongoose.Types.ObjectId);
+
+    const sessions = await AttendanceSession.find({ attendanceDayId: { $in: realPageDayIds } })
       .sort({ 'checkIn.timestamp': 1 })
       .lean();
 
@@ -523,14 +615,38 @@ export class AttendanceService {
       sessionsByDay.get(key)!.push(s);
     }
 
-    const data = days.map((day) => {
-      const daySessions = sessionsByDay.get((day._id as mongoose.Types.ObjectId).toHexString()) ?? [];
-      return formatDayRecord(
-        day as unknown as IAttendanceDay,
-        daySessions.map(formatSession),
-        settings ?? { requiredDailyMinutes: 540 },
-        timezone,
-      );
+    const settingsObj = settings ?? { requiredDailyMinutes: 540 };
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    const data = paginated.map((item) => {
+      if (item.real) {
+        const { doc } = item as RealEntry;
+        const daySessions = sessionsByDay.get((doc._id as mongoose.Types.ObjectId).toHexString()) ?? [];
+        return formatDayRecord(
+          doc as unknown as IAttendanceDay,
+          daySessions.map(formatSession),
+          settingsObj,
+          timezone,
+        );
+      }
+      // Synthetic absent — past working day with no AttendanceDay document
+      const { dateString } = item as SyntheticEntry;
+      const zonedDate = toZonedTime(new Date(dateString + 'T12:00:00Z'), timezone);
+      const dayName = dayNames[zonedDate.getDay()];
+      return {
+        dateString,
+        dayOfWeek: dayName.charAt(0).toUpperCase() + dayName.slice(1),
+        status: 'absent' as const,
+        totalMinutes: 0,
+        overtimeMinutes: 0,
+        isLateArrival: false,
+        lateByMinutes: 0,
+        isHalfDayCapped: false,
+        isHoliday: false,
+        isWeekend: false,
+        isRegularized: false,
+        sessions: [],
+      };
     });
 
     return {

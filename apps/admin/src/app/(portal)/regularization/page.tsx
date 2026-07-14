@@ -34,7 +34,8 @@ export default function RegularizationsPage() {
   const [modal, setModal] = useState<{ reg: RegularizationRequest; action: 'approve' | 'reject' } | null>(null);
 
   const status = params.get('status') ?? '';
-  const query  = buildQuery({ status: status || undefined });
+  const type   = params.get('type') ?? '';
+  const query  = buildQuery({ status: status || undefined, type: type || undefined });
   const { regularizations, pagination, isLoading, refresh } = useRegularizations(query);
 
   const updateParam = (key: string, value: string) => {
@@ -54,6 +55,12 @@ export default function RegularizationsPage() {
             <option value="rejected">Rejected</option>
             <option value="withdrawn">Withdrawn</option>
           </Select>
+          <Select value={type} onChange={e => updateParam('type', e.target.value)} className="w-48">
+            <option value="">All Types</option>
+            {Object.entries(TYPE_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </Select>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -67,7 +74,7 @@ export default function RegularizationsPage() {
             </thead>
             {isLoading ? <TableSkeleton rows={8} cols={6} /> : regularizations.length === 0 ? (
               <tbody><tr><td colSpan={6}>
-                <EmptyState title="No regularization requests" filtered={!!status} onClearFilters={() => router.push('/regularization')} />
+                <EmptyState title="No regularization requests" filtered={!!status || !!type} onClearFilters={() => router.push('/regularization')} />
               </td></tr></tbody>
             ) : (
               <tbody>
