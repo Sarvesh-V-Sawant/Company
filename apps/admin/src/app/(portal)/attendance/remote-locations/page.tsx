@@ -140,7 +140,11 @@ export default function RemoteLocationsPage() {
         {/* Table */}
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
           {isLoading ? (
-            <div className="p-6"><TableSkeleton rows={4} /></div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <TableSkeleton rows={4} cols={6} />
+              </table>
+            </div>
           ) : locations.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <MapPin className="h-8 w-8 text-gray-300" />

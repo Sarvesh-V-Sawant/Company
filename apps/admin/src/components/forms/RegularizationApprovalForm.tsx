@@ -23,10 +23,17 @@ export default function RegularizationApprovalForm({ reg, onSuccess, action }: P
   const onSubmit = async (data: { remark?: string }) => {
     setSubmitting(true);
     try {
-      await apiFetch(`/api/v1/regularizations/${reg._id}/${action}`, {
-        method: 'POST',
-        body: JSON.stringify({ remark: data.remark }),
-      });
+      const body = action === 'reject'
+        ? { reason: data.remark }
+        : {};
+      const result = await apiFetch<{ success: boolean; error?: { message: string } }>(
+        `/api/v1/regularizations/${reg._id}/${action}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+      );
+      if (!result.success) {
+        toast.error(result.error?.message ?? `Failed to ${action}`);
+        return;
+      }
       toast.success(`Regularization ${action === 'approve' ? 'approved' : 'rejected'}`);
       onSuccess();
     } catch (err: unknown) {
