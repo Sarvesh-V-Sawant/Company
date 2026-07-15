@@ -19,6 +19,7 @@ class AttendanceRemoteSource {
       'status': summary['status'] ?? 'absent',
       'isCheckedIn': raw['isCheckedIn'] ?? false,
       'forgotCheckout': raw['forgotCheckout'] ?? false,
+      'staleSession': raw['staleSession'],
       'currentSessionStart': currentSession?['checkInTimestamp'],
       'sessions': rawSessions.map((s) {
         final m = s as Map<String, dynamic>;

@@ -47,11 +47,26 @@ class AttendanceSession {
   }
 }
 
+class StaleSession {
+  final String dateString;
+  final String checkInTimestamp;
+
+  const StaleSession({required this.dateString, required this.checkInTimestamp});
+
+  factory StaleSession.fromJson(Map<String, dynamic> json) {
+    return StaleSession(
+      dateString: json['dateString'] as String? ?? '',
+      checkInTimestamp: json['checkInTimestamp'] as String? ?? '',
+    );
+  }
+}
+
 class TodayAttendance {
   final String date;
   final String status;
   final bool isCheckedIn;
   final bool forgotCheckout;
+  final StaleSession? staleSession;
   final String? currentSessionStart;
   final List<AttendanceSession> sessions;
   final int totalMinutesToday;
@@ -61,17 +76,20 @@ class TodayAttendance {
     required this.status,
     required this.isCheckedIn,
     this.forgotCheckout = false,
+    this.staleSession,
     this.currentSessionStart,
     required this.sessions,
     required this.totalMinutesToday,
   });
 
   factory TodayAttendance.fromJson(Map<String, dynamic> json) {
+    final staleJson = json['staleSession'] as Map<String, dynamic>?;
     return TodayAttendance(
       date: json['date'] as String? ?? '',
       status: json['status'] as String? ?? 'absent',
       isCheckedIn: json['isCheckedIn'] as bool? ?? false,
       forgotCheckout: json['forgotCheckout'] as bool? ?? false,
+      staleSession: staleJson != null ? StaleSession.fromJson(staleJson) : null,
       currentSessionStart: json['currentSessionStart'] as String?,
       sessions: (json['sessions'] as List<dynamic>?)
               ?.map((e) => AttendanceSession.fromJson(e as Map<String, dynamic>))

@@ -255,6 +255,28 @@ export class AttendanceService {
     const [year, month] = dateString.split('-').map(Number);
     const dateOnly = new Date(dateString + 'T00:00:00.000Z');
 
+    // Auto-close any stale active session (missed-checkout rollover) before creating new one.
+    // Stale = session from a previous calendar day OR running ≥ 24 h.
+    // This removes the partial-unique-index conflict and avoids forcing the employee to regularise
+    // before they can check in again.
+    const MAX_SESSION_MINUTES = 24 * 60;
+    const existingActive = await AttendanceSession.findOne({
+      employeeId: new mongoose.Types.ObjectId(input.employeeId),
+      isActive: true,
+    }).lean();
+    if (existingActive) {
+      const elapsedMinutes = Math.round((Date.now() - existingActive.checkIn.timestamp.getTime()) / 60_000);
+      const isStale = elapsedMinutes >= MAX_SESSION_MINUTES || existingActive.dateString !== dateString;
+      if (!isStale) throw new AppError('ATT_003', 409, 'Already checked in.');
+      const cappedDuration = Math.min(elapsedMinutes, MAX_SESSION_MINUTES);
+      await AttendanceSession.findByIdAndUpdate(existingActive._id, {
+        $set: { isActive: false, closedBySystem: true, systemCloseReason: 'midnight-rollover', durationMinutes: cappedDuration },
+      });
+      await AttendanceDay.findByIdAndUpdate(existingActive.attendanceDayId, {
+        $inc: { totalMinutes: cappedDuration },
+      });
+    }
+
     // Transaction: upsert AttendanceDay + create AttendanceSession (BR-ATT-07)
     const mongoSession = await mongoose.startSession();
     let dayDoc: IAttendanceDay;
@@ -486,18 +508,21 @@ export class AttendanceService {
       AttendanceSession.find({ employeeId: new mongoose.Types.ObjectId(employeeId), dateString }).lean(),
     ]);
 
-    const isCheckedIn = !!activeSession;
     const totalMinutes = day?.totalMinutes ?? 0;
     const requiredMinutes = settings?.requiredDailyMinutes ?? 540;
 
-    // Running minutes for active session; capped at 24h — beyond that the employee
-    // forgot to check out and must regularise rather than showing an unbounded timer.
+    // Running minutes for active session; capped at 24 h.
+    // A session is stale when it started on a previous calendar day OR has been running ≥ 24 h.
+    // Stale = missed checkout: employee is treated as NOT checked-in so a new check-in is allowed
+    // without a forced regularisation.
     const MAX_SESSION_MINUTES = 24 * 60;
     const rawRunningMinutes = activeSession
       ? Math.round((Date.now() - activeSession.checkIn.timestamp.getTime()) / 60_000)
       : 0;
-    const forgotCheckout = rawRunningMinutes >= MAX_SESSION_MINUTES;
-    const runningMinutes = forgotCheckout ? MAX_SESSION_MINUTES : rawRunningMinutes;
+    const isStale = !!activeSession && (activeSession.dateString !== dateString || rawRunningMinutes >= MAX_SESSION_MINUTES);
+    const forgotCheckout = isStale;
+    const runningMinutes = isStale ? MAX_SESSION_MINUTES : rawRunningMinutes;
+    const isCheckedIn = !!activeSession && !isStale;
 
     const sessions = allSessions.map((s) => ({
       sessionId: (s._id as mongoose.Types.ObjectId).toHexString(),
@@ -524,9 +549,15 @@ export class AttendanceService {
             },
             checkInAddress: activeSession.checkIn.address ?? null,
             elapsedMinutes: runningMinutes,
-            remainingMinutes: forgotCheckout ? 0 : Math.max(0, requiredMinutes - totalMinutes - runningMinutes),
+            remainingMinutes: Math.max(0, requiredMinutes - totalMinutes - runningMinutes),
             isRemote: activeSession.isRemote,
             ...(activeSession.remoteSource !== undefined && { remoteSource: activeSession.remoteSource }),
+          }
+        : null,
+      staleSession: isStale && activeSession
+        ? {
+            dateString: activeSession.dateString,
+            checkInTimestamp: activeSession.checkIn.timestamp.toISOString(),
           }
         : null,
       todaySummary: {

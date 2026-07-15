@@ -302,6 +302,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 ),
               ),
 
+              // Missed checkout banner — optional regularise, shown when stale session detected
+              attendanceAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (today) {
+                  if (today == null || !today.forgotCheckout) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _MissedCheckoutBanner(
+                      onRegularise: () {
+                        final stale = today.staleSession;
+                        final dateStr = stale?.dateString ?? today.date;
+                        final ci = stale != null ? _isoToHHMM(stale.checkInTimestamp) : null;
+                        final uri = '${RouteNames.regularizationCreate}?type=forgotCheckOut&date=$dateStr'
+                            '${ci != null ? '&checkIn=$ci' : ''}';
+                        context.push(uri);
+                      },
+                    ),
+                  );
+                },
+              ),
+
               // Action button
               attendanceAsync.when(
                 loading: () => ElevatedButton(
@@ -425,13 +447,16 @@ class _AttendanceTimerWidgetState extends State<_AttendanceTimerWidget> {
   Widget build(BuildContext context) {
     final elapsed = _elapsed();
     final active = widget.isActive && widget.sessionStart != null;
-    final timerColor = widget.forgotCheckout ? const Color(0xFFDC2626) : (active ? const Color(0xFF16A34A) : Colors.grey[300]);
+    // Only flag as missed when the session is actually active (stale & running).
+    // When isCheckedIn=false (stale auto-resolved), the banner handles messaging.
+    final showMissed = widget.forgotCheckout && widget.isActive;
+    final timerColor = showMissed ? const Color(0xFFDC2626) : (active ? const Color(0xFF16A34A) : Colors.grey[300]);
 
     return Column(
       children: [
         Text(
-          widget.forgotCheckout ? 'Missed check-out' : (active ? 'Current session' : 'Session time'),
-          style: TextStyle(fontSize: 12, color: widget.forgotCheckout ? const Color(0xFFDC2626) : Colors.grey[600]),
+          showMissed ? 'Missed check-out' : (active ? 'Current session' : 'Session time'),
+          style: TextStyle(fontSize: 12, color: showMissed ? const Color(0xFFDC2626) : Colors.grey[600]),
         ),
         const SizedBox(height: 6),
         Text(
@@ -610,6 +635,51 @@ class _StatusCard extends StatelessWidget {
       final dt = DateTime.parse(iso).toLocal();
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) { return iso; }
+  }
+}
+
+// ─── Missed checkout banner ───────────────────────────────────────────────────
+
+class _MissedCheckoutBanner extends StatelessWidget {
+  const _MissedCheckoutBanner({required this.onRegularise});
+  final VoidCallback onRegularise;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        border: Border.all(color: const Color(0xFFFCD34D)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Missed check-out', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF92400E))),
+                const SizedBox(height: 2),
+                const Text('A previous session had no check-out recorded.', style: TextStyle(fontSize: 12, color: Color(0xFF92400E))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onRegularise,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              foregroundColor: const Color(0xFFD97706),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            child: const Text('Regularise'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
