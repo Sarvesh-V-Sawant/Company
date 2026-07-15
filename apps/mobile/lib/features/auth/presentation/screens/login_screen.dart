@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -60,7 +61,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (result.requiresPasswordChange) {
         context.go(RouteNames.changePassword);
       } else {
-        context.go(RouteNames.home);
+        final settings = await FirebaseMessaging.instance.getNotificationSettings();
+        if (!mounted) return;
+        if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+          context.go(RouteNames.notificationPermission);
+        } else {
+          context.go(RouteNames.home);
+        }
       }
     } on DeviceMismatchException catch (e) {
       if (!mounted) return;

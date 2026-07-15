@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,7 +39,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         context.go(RouteNames.changePassword);
       } else {
         final notifRoute = ref.read(initialNotificationRouteProvider);
-        context.go(notifRoute ?? RouteNames.home);
+        if (notifRoute != null) {
+          // Cold-start from notification tap — permission already granted
+          context.go(notifRoute);
+        } else {
+          final settings = await FirebaseMessaging.instance.getNotificationSettings();
+          if (!mounted) return;
+          if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+            context.go(RouteNames.notificationPermission);
+          } else {
+            context.go(RouteNames.home);
+          }
+        }
       }
     } catch (_) {
       // Network failure — offline mode with cached data
