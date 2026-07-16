@@ -26,6 +26,39 @@ export interface ILeaveTypesConfig {
   casualLeave: ILeaveTypeConfig;
 }
 
+export interface IStatutoryPFConfig {
+  enabled: boolean;
+  employeeRate: number;
+  employerRate: number;
+  wagesCeiling: number;
+}
+
+export interface IStatutoryESICConfig {
+  enabled: boolean;
+  employeeRate: number;
+  employerRate: number;
+  wagesCeiling: number;
+}
+
+export interface IStatutoryPTConfig {
+  enabled: boolean;
+  state: string;
+  monthlySlabs: { upToGross: number; amount: number }[];
+}
+
+export interface IStatutoryTDSConfig {
+  enabled: boolean;
+  flatRate: number;
+}
+
+export interface IStatutoryConfig {
+  enabled: boolean;
+  pf: IStatutoryPFConfig;
+  esic: IStatutoryESICConfig;
+  pt: IStatutoryPTConfig;
+  tds: IStatutoryTDSConfig;
+}
+
 export interface ICompanySettings extends Document<string> {
   companyName: string;
   timezone: string;
@@ -47,6 +80,7 @@ export interface ICompanySettings extends Document<string> {
   payrollCutoffDay: number;
   attendanceReminderEnabled: boolean;
   attendanceReminderTime: string;
+  statutoryConfig?: IStatutoryConfig;
 }
 
 const CompanySettingsSchema = new Schema<ICompanySettings>({
@@ -104,6 +138,30 @@ const CompanySettingsSchema = new Schema<ICompanySettings>({
   payrollCutoffDay: { type: Number, default: 25, min: 1, max: 28 },
   attendanceReminderEnabled: { type: Boolean, default: true },
   attendanceReminderTime: { type: String, default: '10:30' },
+  statutoryConfig: {
+    enabled: { type: Boolean, default: false },
+    pf: {
+      enabled:      { type: Boolean, default: false },
+      employeeRate: { type: Number, default: 12,    min: 0, max: 100 },
+      employerRate: { type: Number, default: 12,    min: 0, max: 100 },
+      wagesCeiling: { type: Number, default: 15000, min: 0 },
+    },
+    esic: {
+      enabled:      { type: Boolean, default: false },
+      employeeRate: { type: Number, default: 0.75,  min: 0, max: 100 },
+      employerRate: { type: Number, default: 3.25,  min: 0, max: 100 },
+      wagesCeiling: { type: Number, default: 21000, min: 0 },
+    },
+    pt: {
+      enabled:     { type: Boolean, default: false },
+      state:       { type: String, default: '' },
+      monthlySlabs: [{ upToGross: Number, amount: Number }],
+    },
+    tds: {
+      enabled:  { type: Boolean, default: false },
+      flatRate: { type: Number, default: 10, min: 0, max: 100 },
+    },
+  },
 });
 
 export const CompanySettings =

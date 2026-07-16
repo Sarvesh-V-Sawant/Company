@@ -1,15 +1,16 @@
 'use client';
 import Link from 'next/link';
-import { Building2, CalendarX, Tags, MapPin, Clock, CalendarDays, ChevronRight } from 'lucide-react';
+import { Building2, CalendarX, Tags, MapPin, Clock, CalendarDays, ChevronRight, Landmark } from 'lucide-react';
 import AdminLayout from '@components/layout/AdminLayout';
 
 const SETTINGS = [
-  { href: '/settings/company',      icon: Building2,   label: 'Company',      description: 'Name, timezone, currency and address' },
-  { href: '/settings/shift',        icon: Clock,       label: 'Shift',        description: 'Working hours and grace period' },
-  { href: '/settings/working-days', icon: CalendarDays,label: 'Working Days',  description: 'Select which days are working days' },
-  { href: '/settings/holidays',     icon: CalendarX,   label: 'Holidays',     description: 'Manage company holidays' },
-  { href: '/settings/leave-types',  icon: Tags,        label: 'Leave Types',  description: 'Configure leave type codes and allocations' },
-  { href: '/settings/geofence',     icon: MapPin,      label: 'Geofence',     description: 'Enforce location-based check-in/out' },
+  { href: '/settings/company',      icon: Building2,   label: 'Company',              description: 'Name, timezone, currency and address' },
+  { href: '/settings/shift',        icon: Clock,       label: 'Shift',                description: 'Working hours and grace period' },
+  { href: '/settings/working-days', icon: CalendarDays,label: 'Working Days',         description: 'Select which days are working days' },
+  { href: '/settings/holidays',     icon: CalendarX,   label: 'Holidays',             description: 'Manage company holidays' },
+  { href: '/settings/leave-types',  icon: Tags,        label: 'Leave Types',          description: 'Configure leave type codes and allocations' },
+  { href: '/settings/geofence',     icon: MapPin,      label: 'Geofence',             description: 'Enforce location-based check-in/out' },
+  { href: '/settings/statutory',    icon: Landmark,    label: 'Statutory Deductions', description: 'PF, ESIC, PT, TDS — disabled by default' },
 ];
 
 export default function SettingsPage() {

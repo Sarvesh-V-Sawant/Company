@@ -14,6 +14,7 @@ import type {
   UpdateLeaveTypeInput,
   LeaveTypeCode,
 } from '@validators/settings';
+import type { IStatutoryConfig } from '@models/CompanySettings';
 
 async function requireSettings(): Promise<ICompanySettings & { _id: string }> {
   const s = await CompanySettings.findById('company-settings').lean() as (ICompanySettings & { _id: string }) | null;
@@ -102,6 +103,17 @@ export class SettingsService {
     ).lean() as (ICompanySettings & { _id: string }) | null;
     if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
     return updated;
+  }
+
+  static async updateStatutory(config: IStatutoryConfig) {
+    await connectDB();
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set: { statutoryConfig: config } },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated.statutoryConfig;
   }
 
   static async listHolidays(year?: number) {

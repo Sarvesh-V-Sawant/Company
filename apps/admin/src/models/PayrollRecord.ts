@@ -17,6 +17,14 @@ export interface IDeductionBreakdown {
   totalDeductions: number;
 }
 
+export interface IStatutoryDeductions {
+  pf?: number;
+  esic?: number;
+  pt?: number;
+  tds?: number;
+  total: number;
+}
+
 export interface IPayrollRecord extends Document {
   employeeId: mongoose.Types.ObjectId;
   yearMonth: string;
@@ -35,6 +43,7 @@ export interface IPayrollRecord extends Document {
   manualDeduction: number;
   manualDeductionRemark: string;
   netSalary: number;
+  statutoryDeductions?: IStatutoryDeductions;
   staleEmployeeIds: string[];
   computedAt: Date;
   finalisedAt?: Date;
@@ -73,6 +82,13 @@ const PayrollRecordSchema = new Schema<IPayrollRecord>(
     manualDeduction: { type: Number, default: 0, min: 0 },
     manualDeductionRemark: { type: String, default: '' },
     netSalary: { type: Number, required: true, min: 0 },
+    statutoryDeductions: {
+      pf:    { type: Number, min: 0 },
+      esic:  { type: Number, min: 0 },
+      pt:    { type: Number, min: 0 },
+      tds:   { type: Number, min: 0 },
+      total: { type: Number, min: 0 },
+    },
     staleEmployeeIds: [{ type: String }],
     computedAt: { type: Date, required: true },
     finalisedAt: Date,

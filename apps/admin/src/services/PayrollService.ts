@@ -12,10 +12,10 @@ import { Holiday } from '@models/Holiday';
 import { PayrollRecord } from '@models/PayrollRecord';
 import { AuditLog } from '@models/AuditLog';
 import { NotificationService } from '@services/NotificationService';
-import type { IPayrollRecord, IEmployeeSnapshot } from '@models/PayrollRecord';
+import type { IPayrollRecord, IEmployeeSnapshot, IStatutoryDeductions } from '@models/PayrollRecord';
 import type { IEmployee } from '@models/Employee';
 import type { IUser } from '@models/User';
-import type { ICompanySettings } from '@models/CompanySettings';
+import type { ICompanySettings, IStatutoryConfig } from '@models/CompanySettings';
 import type { PayrollListQuery, PayrollMeQuery } from '@validators/payroll';
 import { PayrollLockService } from '@services/PayrollLockService';
 
@@ -41,6 +41,7 @@ function formatRecord(r: IPayrollRecord & { _id: mongoose.Types.ObjectId }) {
     manualDeduction:       r.manualDeduction,
     manualDeductionRemark: r.manualDeductionRemark,
     netSalary:             r.netSalary,
+    statutoryDeductions:   r.statutoryDeductions ?? null,
     computedAt:            r.computedAt.toISOString(),
     finalisedAt:           r.finalisedAt?.toISOString() ?? null,
     // UI/mobile aliases
@@ -52,6 +53,42 @@ function formatRecord(r: IPayrollRecord & { _id: mongoose.Types.ObjectId }) {
     earnings:     { 'Gross Salary': r.grossSalary } as Record<string, number>,
     isStale:      (r.staleEmployeeIds?.length ?? 0) > 0,
   };
+}
+
+function computeStatutoryDeductions(
+  grossSalary: number,
+  config: IStatutoryConfig | undefined,
+): IStatutoryDeductions | undefined {
+  if (!config?.enabled) return undefined;
+
+  let pf: number | undefined;
+  let esic: number | undefined;
+  let pt: number | undefined;
+  let tds: number | undefined;
+
+  if (config.pf.enabled && grossSalary <= config.pf.wagesCeiling) {
+    pf = Math.round((grossSalary * config.pf.employeeRate) / 100);
+  }
+
+  if (config.esic.enabled && grossSalary <= config.esic.wagesCeiling) {
+    esic = Math.round((grossSalary * config.esic.employeeRate) / 100);
+  }
+
+  if (config.pt.enabled && config.pt.monthlySlabs.length > 0) {
+    const slab = config.pt.monthlySlabs
+      .sort((a, b) => a.upToGross - b.upToGross)
+      .find((s) => grossSalary <= s.upToGross);
+    if (slab) pt = slab.amount;
+  }
+
+  if (config.tds.enabled) {
+    tds = Math.round((grossSalary * config.tds.flatRate) / 100);
+  }
+
+  const total = (pf ?? 0) + (esic ?? 0) + (pt ?? 0) + (tds ?? 0);
+  if (total === 0) return undefined;
+
+  return { pf, esic, pt, tds, total };
 }
 
 function yearMonthOf(date: Date): string {
@@ -145,6 +182,12 @@ async function computeForEmployee(params: {
     manualDeduction,
   });
 
+  const statutoryDeductions = computeStatutoryDeductions(
+    employee.monthlySalary,
+    settings.statutoryConfig,
+  );
+  const totalNetSalary = Math.max(0, engineResult.netSalary - (statutoryDeductions?.total ?? 0));
+
   const snapshot: IEmployeeSnapshot = {
     firstName:     employee.firstName,
     lastName:      employee.lastName,
@@ -181,7 +224,10 @@ async function computeForEmployee(params: {
             },
             manualDeduction,
             manualDeductionRemark,
-            netSalary:  engineResult.netSalary,
+            netSalary:  totalNetSalary,
+            ...(statutoryDeductions != null
+              ? { statutoryDeductions }
+              : { statutoryDeductions: null }),
             computedAt: new Date(),
           },
           $unset: { finalisedAt: 1 },
