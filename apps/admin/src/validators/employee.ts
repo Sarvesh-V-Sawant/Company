@@ -34,6 +34,13 @@ export const CreateEmployeeSchema = z.object({
     .refine((d) => new Date(d) <= new Date(), { message: 'dateOfJoining cannot be in the future' }),
 });
 
+const SalaryComponentsSchema = z.object({
+  basic:            z.number().min(0).optional(),
+  hra:              z.number().min(0).optional(),
+  specialAllowance: z.number().min(0).optional(),
+  otherAllowances:  z.number().min(0).optional(),
+}).optional();
+
 export const UpdateEmployeeSchema = z
   .object({
     firstName: z.string().min(1).max(50).optional(),
@@ -42,6 +49,7 @@ export const UpdateEmployeeSchema = z
     department: z.string().max(100).nullable().optional(),
     designation: z.string().max(100).nullable().optional(),
     monthlySalary: z.number().min(0).optional(),
+    salaryComponents: SalaryComponentsSchema,
     dateOfLeaving: z
       .string()
       .regex(DATE_REGEX, 'Must be YYYY-MM-DD')

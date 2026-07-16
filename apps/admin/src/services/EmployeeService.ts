@@ -415,6 +415,7 @@ export class EmployeeService {
       department?: string | null;
       designation?: string | null;
       monthlySalary?: number;
+      salaryComponents?: { basic?: number; hra?: number; specialAllowance?: number; otherAllowances?: number };
       dateOfLeaving?: string | null;
       allowOutsideGeofence?: boolean;
     },
@@ -469,11 +470,20 @@ export class EmployeeService {
     const updated = await User.findByIdAndUpdate(id, updateOp, { new: true, runValidators: true });
     if (!updated) throw new AppError('GEN_002', 404, 'Employee not found.');
 
-    if (data.allowOutsideGeofence !== undefined) {
+    if (data.allowOutsideGeofence !== undefined || data.salaryComponents !== undefined) {
+      const empSet: Record<string, unknown> = {};
+      if (data.allowOutsideGeofence !== undefined) {
+        empSet.allowOutsideGeofence = data.allowOutsideGeofence;
+        before.allowOutsideGeofence = !data.allowOutsideGeofence;
+        after.allowOutsideGeofence = data.allowOutsideGeofence;
+      }
+      if (data.salaryComponents !== undefined) {
+        empSet.salaryComponents = data.salaryComponents;
+      }
       await Employee.findOneAndUpdate(
         { userId: new mongoose.Types.ObjectId(id) },
         {
-          $set: { allowOutsideGeofence: data.allowOutsideGeofence },
+          $set: { ...empSet },
           $setOnInsert: {
             employeeCode:  user.employeeId,
             firstName:     user.firstName,
@@ -484,8 +494,6 @@ export class EmployeeService {
         },
         { upsert: true },
       );
-      before.allowOutsideGeofence = !data.allowOutsideGeofence;
-      after.allowOutsideGeofence = data.allowOutsideGeofence;
     }
 
     await AuditLog.create({

@@ -35,6 +35,13 @@ const createSchema = z.object({
     .refine(d => d <= today(), { message: 'Cannot be a future date' }),
 });
 
+const salaryComponentsSchema = z.object({
+  basic:            z.coerce.number().min(0).optional(),
+  hra:              z.coerce.number().min(0).optional(),
+  specialAllowance: z.coerce.number().min(0).optional(),
+  otherAllowances:  z.coerce.number().min(0).optional(),
+});
+
 const editSchema = z.object({
   firstName:             z.string().min(1, 'Required').max(50).optional(),
   lastName:              z.string().min(1, 'Required').max(50).optional(),
@@ -42,6 +49,7 @@ const editSchema = z.object({
   department:            z.string().max(100).optional(),
   designation:           z.string().max(100).optional(),
   monthlySalary:         z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0).optional(),
+  salaryComponents:      salaryComponentsSchema.optional(),
   allowOutsideGeofence:  z.boolean().optional(),
 });
 
@@ -205,6 +213,7 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
 
 function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSuccess: () => void }) {
   const [submitting, setSubmitting] = useState(false);
+  const [showComponents, setShowComponents] = useState(!!(employee as { salaryComponents?: object }).salaryComponents);
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<EditForm>({
     resolver: zodResolver(editSchema),
     defaultValues: {
@@ -214,6 +223,7 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
       department:           employee.department ?? '',
       designation:          employee.designation ?? '',
       monthlySalary:        employee.monthlySalary,
+      salaryComponents:     (employee as { salaryComponents?: EditForm['salaryComponents'] }).salaryComponents,
       allowOutsideGeofence: employee.allowOutsideGeofence ?? false,
     },
   });
@@ -236,6 +246,7 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
           department:           data.department?.trim() || null,
           designation:          data.designation?.trim() || null,
           monthlySalary:        data.monthlySalary,
+          salaryComponents:     showComponents ? data.salaryComponents : undefined,
           allowOutsideGeofence: data.allowOutsideGeofence,
         }),
       });
@@ -304,6 +315,39 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
         <Input type="number" min={0} step={500} {...register('monthlySalary')}
           error={!!errors.monthlySalary} />
         {errors.monthlySalary && <p className="mt-1 text-xs text-red-600">{errors.monthlySalary.message}</p>}
+      </div>
+
+      {/* Salary Component Breakdown (optional) */}
+      <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowComponents(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          <span>Salary Component Breakdown <span className="text-gray-400 font-normal">(optional)</span></span>
+          <span className="text-gray-400 text-xs">{showComponents ? '▲ Hide' : '▼ Show'}</span>
+        </button>
+        {showComponents && (
+          <div className="p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Basic</label>
+              <Input type="number" min={0} step={100} {...register('salaryComponents.basic')} placeholder="e.g. 25000" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">HRA</label>
+              <Input type="number" min={0} step={100} {...register('salaryComponents.hra')} placeholder="e.g. 10000" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Special Allowance</label>
+              <Input type="number" min={0} step={100} {...register('salaryComponents.specialAllowance')} placeholder="e.g. 10000" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Other Allowances</label>
+              <Input type="number" min={0} step={100} {...register('salaryComponents.otherAllowances')} placeholder="e.g. 5000" />
+            </div>
+            <p className="col-span-2 text-xs text-gray-400">Components are informational only. Monthly Salary (gross) is used for payroll calculation.</p>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">

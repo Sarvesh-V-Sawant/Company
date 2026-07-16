@@ -6,6 +6,7 @@ import { PayrollRecord } from '@models/PayrollRecord';
 import { User } from '@models/User';
 import { AuditLog } from '@models/AuditLog';
 import { AppError } from '@services/AuthService';
+import { Regularization } from '@models/Regularization';
 import type {
   AttendanceReportQuery,
   AttendanceExportQuery,
@@ -15,6 +16,8 @@ import type {
   PayrollExportQuery,
   EmployeeSummaryQuery,
   DepartmentSummaryQuery,
+  RegularizationReportQuery,
+  RegularizationExportQuery,
 } from '@validators/report';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -829,6 +832,66 @@ export class ReportService {
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
     void writeAuditLog(userId, 'REPORT_EXPORTED', 'department-summary', query as Record<string, unknown>);
     return buffer;
+  }
+
+  // ── Regularization report ─────────────────────────────────────────────────────
+
+  static async regularizationReport(userId: string, query: RegularizationReportQuery) {
+    await connectDB();
+
+    const filter: Record<string, unknown> = {};
+    if (query.employeeId) filter.employeeId = new mongoose.Types.ObjectId(query.employeeId);
+    if (query.status)     filter.status     = query.status;
+    if (query.type)       filter.type       = query.type;
+    if (query.startDate || query.endDate) {
+      const range: Record<string, string> = {};
+      if (query.startDate) range.$gte = query.startDate;
+      if (query.endDate)   range.$lte = query.endDate;
+      filter.dateString = range;
+    }
+
+    const skip = (query.page - 1) * query.limit;
+    const [regs, total] = await Promise.all([
+      mongoose.connection.collection('regularizations')
+        .find(filter).sort({ createdAt: -1 }).skip(skip).limit(query.limit).toArray(),
+      mongoose.connection.collection('regularizations').countDocuments(filter),
+    ]);
+
+    const uniqueIds = [...new Set(regs.map((r) => String(r.employeeId)))];
+    const users = await User.find({ _id: { $in: uniqueIds } }, '_id firstName lastName').lean() as { _id: mongoose.Types.ObjectId; firstName: string; lastName: string }[];
+    const userMap = new Map(users.map((u) => [u._id.toHexString(), `${u.firstName} ${u.lastName}`]));
+
+    const data = regs.map((r) => ({
+      date:        String(r.dateString ?? ''),
+      employeeName: userMap.get(String(r.employeeId)) ?? String(r.employeeId),
+      type:        String(r.type ?? ''),
+      status:      String(r.status ?? ''),
+      reason:      String(r.reason ?? ''),
+      reviewRemark: String(r.reviewRemark ?? ''),
+      createdAt:   r.createdAt ? new Date(r.createdAt as Date).toISOString().slice(0, 10) : '',
+    }));
+
+    void writeAuditLog(userId, 'REPORT_VIEWED', 'regularization-report', query as Record<string, unknown>);
+    return { data, pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+  }
+
+  static async regularizationExport(userId: string, query: RegularizationExportQuery): Promise<Buffer> {
+    await connectDB();
+
+    const fullQuery: RegularizationReportQuery = { ...query, page: 1, limit: 5000 };
+    const { data } = await ReportService.regularizationReport(userId, fullQuery);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Regularization Report');
+    ws.addRow(['Date', 'Employee', 'Type', 'Status', 'Reason', 'Review Remark', 'Submitted']);
+    ws.getRow(1).font = { bold: true };
+    for (const r of data) ws.addRow([r.date, r.employeeName, r.type, r.status, r.reason, r.reviewRemark, r.createdAt]);
+    ws.columns.forEach((c) => { c.width = 20; });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    void writeAuditLog(userId, 'REPORT_EXPORTED', 'regularization-report', query as Record<string, unknown>);
+    return Buffer.from(buffer as ArrayBuffer);
   }
 
   // ── Dashboard summary ─────────────────────────────────────────────────────────

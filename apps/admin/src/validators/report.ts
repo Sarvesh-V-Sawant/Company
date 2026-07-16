@@ -53,11 +53,26 @@ export const DepartmentSummaryQuerySchema = z.object({
   year:  z.coerce.number().int().min(2020).max(2099).optional(),
 });
 
-export type AttendanceReportQuery  = z.infer<typeof AttendanceReportQuerySchema>;
+export const RegularizationReportQuerySchema = z.object({
+  employeeId: objectId.optional(),
+  department: z.string().optional(),
+  status:     z.enum(['pending','approved','rejected','withdrawn']).optional(),
+  type:       z.enum(['forgotCheckIn','forgotCheckOut','workAwayFromOffice','officialTravel','clientVisit']).optional(),
+  startDate:  dateStr.optional(),
+  endDate:    dateStr.optional(),
+  page:       z.coerce.number().int().min(1).default(1),
+  limit:      z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export const RegularizationExportQuerySchema = RegularizationReportQuerySchema.omit({ page: true, limit: true });
+
+export type AttendanceReportQuery        = z.infer<typeof AttendanceReportQuerySchema>;
 export type AttendanceExportQuery  = z.infer<typeof AttendanceExportQuerySchema>;
 export type LeaveReportQuery       = z.infer<typeof LeaveReportQuerySchema>;
 export type LeaveExportQuery       = z.infer<typeof LeaveExportQuerySchema>;
 export type PayrollReportQuery     = z.infer<typeof PayrollReportQuerySchema>;
 export type PayrollExportQuery     = z.infer<typeof PayrollExportQuerySchema>;
-export type EmployeeSummaryQuery   = z.infer<typeof EmployeeSummaryQuerySchema>;
-export type DepartmentSummaryQuery = z.infer<typeof DepartmentSummaryQuerySchema>;
+export type EmployeeSummaryQuery         = z.infer<typeof EmployeeSummaryQuerySchema>;
+export type DepartmentSummaryQuery       = z.infer<typeof DepartmentSummaryQuerySchema>;
+export type RegularizationReportQuery    = z.infer<typeof RegularizationReportQuerySchema>;
+export type RegularizationExportQuery    = z.infer<typeof RegularizationExportQuerySchema>;

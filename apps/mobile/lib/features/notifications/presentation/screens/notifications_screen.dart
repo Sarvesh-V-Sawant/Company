@@ -57,8 +57,8 @@ class NotificationsScreen extends ConsumerWidget {
 
   void _navigate(BuildContext context, AppNotification n) {
     switch (n.type) {
-      case 'leave_approved':
-      case 'leave_rejected':
+      case 'leave-approved':
+      case 'leave-rejected':
         if (n.referenceId != null) {
           context.push(RouteNames.leaveDetail(n.referenceId!));
         } else {
@@ -71,7 +71,9 @@ class NotificationsScreen extends ConsumerWidget {
         } else {
           context.push(RouteNames.notificationDetail(n.id));
         }
-      case 'attendance_reminder':
+      case 'payroll-finalised':
+        context.go(RouteNames.payslip);
+      case 'attendance-reminder':
         context.go(RouteNames.home);
       default:
         context.push(RouteNames.notificationDetail(n.id));
@@ -103,9 +105,10 @@ class _NotificationTile extends StatelessWidget {
   }
 
   IconData _iconFor(String type) => switch (type) {
-    'leave_approved' || 'leave_rejected' => Icons.beach_access,
+    'leave-approved' || 'leave-rejected' => Icons.beach_access,
     'regularization-approved' || 'regularization-rejected' => Icons.history,
-    'attendance_reminder' => Icons.timer,
+    'payroll-finalised' => Icons.receipt_long,
+    'attendance-reminder' => Icons.timer,
     _ => Icons.notifications,
   };
 }

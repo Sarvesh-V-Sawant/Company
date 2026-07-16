@@ -150,6 +150,22 @@ export default function ReportsPage() {
         />
 
         <ReportSection
+          title="Regularization Report"
+          description="Attendance regularization requests by status and type"
+          exportPath="/api/v1/reports/regularization"
+          buildQuery={() => new URLSearchParams({
+            ...(attFrom && { startDate: attFrom }),
+            ...(attTo && { endDate: attTo }),
+          }).toString()}
+          filters={<>
+            <Input type="date" value={attFrom} onChange={e => setAttFrom(e.target.value)} className="w-36" />
+            <Input type="date" value={attTo}   onChange={e => setAttTo(e.target.value)}   className="w-36" />
+          </>}
+          columns={['Date', 'Employee', 'Type', 'Status', 'Reason', 'Review Remark']}
+          rowMapper={r => <>{td(r.date)}{td(r.employeeName)}{td(r.type)}{td(r.status)}{td(r.reason)}{td(r.reviewRemark)}</>}
+        />
+
+        <ReportSection
           title="Employee Summary"
           description="Headcount by department and status"
           exportPath="/api/v1/reports/employee-summary"

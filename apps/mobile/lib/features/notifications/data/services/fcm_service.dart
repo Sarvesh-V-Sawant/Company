@@ -107,6 +107,8 @@ class FcmService {
       case 'regularization-approved':
       case 'regularization-rejected':
         return id != null ? '/regularization/$id' : '/regularization';
+      case 'payroll-finalised':
+        return '/payslip';
       case 'attendance-reminder':
         return '/home';
       default:
