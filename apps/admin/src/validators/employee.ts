@@ -32,6 +32,7 @@ export const CreateEmployeeSchema = z.object({
     .string()
     .regex(DATE_REGEX, 'Must be YYYY-MM-DD')
     .refine((d) => new Date(d) <= new Date(), { message: 'dateOfJoining cannot be in the future' }),
+  allowOutsideGeofence: z.boolean().optional(),
 });
 
 const SalaryComponentsSchema = z.object({

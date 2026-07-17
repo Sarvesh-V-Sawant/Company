@@ -19,20 +19,21 @@ const today = () => new Date().toISOString().split('T')[0];
 // ── Schemas ───────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
-  employeeId:    z.string().min(1, 'Required').max(20, 'Max 20 characters'),
-  firstName:     z.string().min(1, 'Required').max(50),
-  lastName:      z.string().min(1, 'Required').max(50),
-  email:         z.string().email('Invalid email').max(255),
-  role:          z.enum(['admin', 'employee']),
-  phone:         z.string().optional(),
-  department:    z.string().max(100).optional(),
-  designation:   z.string().max(100).optional(),
-  monthlySalary: z.coerce
+  employeeId:           z.string().min(1, 'Required').max(20, 'Max 20 characters'),
+  firstName:            z.string().min(1, 'Required').max(50),
+  lastName:             z.string().min(1, 'Required').max(50),
+  email:                z.string().email('Invalid email').max(255),
+  role:                 z.enum(['admin', 'employee']),
+  phone:                z.string().optional(),
+  department:           z.string().max(100).optional(),
+  designation:          z.string().max(100).optional(),
+  monthlySalary:        z.coerce
     .number({ invalid_type_error: 'Must be a number' })
     .min(0, 'Must be ≥ 0'),
-  dateOfJoining: z.string()
+  dateOfJoining:        z.string()
     .regex(DATE_REGEX, 'Required')
     .refine(d => d <= today(), { message: 'Cannot be a future date' }),
+  allowOutsideGeofence: z.boolean().optional(),
 });
 
 const salaryComponentsSchema = z.object({
@@ -77,13 +78,15 @@ function generateEmployeeId(): string {
 
 function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<CreateForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: {
-      employeeId: generateEmployeeId(),
-      role: 'employee',
+      employeeId:           generateEmployeeId(),
+      role:                 'employee',
+      allowOutsideGeofence: false,
     },
   });
+  const allowOutsideGeofence = watch('allowOutsideGeofence');
 
   const onSubmit = async (data: CreateForm) => {
     setSubmitting(true);
@@ -96,16 +99,17 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
       await apiFetch('/api/v1/employees', {
         method: 'POST',
         body: JSON.stringify({
-          employeeId:    data.employeeId.trim().toUpperCase(),
-          firstName:     data.firstName.trim(),
-          lastName:      data.lastName.trim(),
-          email:         data.email.trim().toLowerCase(),
-          role:          data.role,
-          phone:         phone ?? undefined,
-          department:    data.department?.trim() || undefined,
-          designation:   data.designation?.trim() || undefined,
-          monthlySalary: data.monthlySalary,
-          dateOfJoining: data.dateOfJoining,
+          employeeId:           data.employeeId.trim().toUpperCase(),
+          firstName:            data.firstName.trim(),
+          lastName:             data.lastName.trim(),
+          email:                data.email.trim().toLowerCase(),
+          role:                 data.role,
+          phone:                phone ?? undefined,
+          department:           data.department?.trim() || undefined,
+          designation:          data.designation?.trim() || undefined,
+          monthlySalary:        data.monthlySalary,
+          dateOfJoining:        data.dateOfJoining,
+          allowOutsideGeofence: data.allowOutsideGeofence ?? false,
         }),
       });
       toast.success('Employee created. A welcome email with password setup instructions has been sent.');
@@ -200,6 +204,26 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
           <option value="employee">Employee</option>
           <option value="admin">Admin</option>
         </Select>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Allow outside-geofence attendance</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Field / Sales employees — check-in bypasses the office geofence restriction.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={!!allowOutsideGeofence}
+            onClick={() => setValue('allowOutsideGeofence', !allowOutsideGeofence, { shouldDirty: true })}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${allowOutsideGeofence ? 'bg-blue-600' : 'bg-gray-200'}`}
+          >
+            <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${allowOutsideGeofence ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">

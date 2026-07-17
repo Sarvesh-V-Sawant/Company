@@ -225,6 +225,7 @@ export class EmployeeService {
       designation?: string;
       monthlySalary: number;
       dateOfJoining: string;
+      allowOutsideGeofence?: boolean;
     },
     createdBy: string,
   ) {
@@ -277,6 +278,7 @@ export class EmployeeService {
         joiningDate: dateOfJoining,
         monthlySalary: data.monthlySalary,
         status: 'active',
+        ...(data.allowOutsideGeofence !== undefined && { allowOutsideGeofence: data.allowOutsideGeofence }),
       });
     } catch (empErr) {
       // Rollback: delete User so the operation is atomic from the caller's perspective
