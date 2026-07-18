@@ -9,12 +9,32 @@ import { Button } from '@components/ui/button';
 import { Select } from '@components/ui/select';
 import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
-import { TableSkeleton } from '@components/ui/skeleton';
+import { Skeleton } from '@components/ui/skeleton';
 import { Badge } from '@components/ui/badge';
 import { useNotifications } from '@/hooks/useNotifications';
 import { usePagination } from '@/hooks/usePagination';
 import { apiFetch } from '@lib/utils/api-client';
 import { cn } from '@lib/utils/cn';
+
+function NotificationsSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-start gap-4">
+          <div className="mt-1.5 h-2 w-2 rounded-full bg-gray-200 shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function NotificationsPageContent() {
   const router = useRouter();
@@ -67,7 +87,7 @@ function NotificationsPageContent() {
 
         <div className="space-y-2">
           {isLoading ? (
-            <TableSkeleton rows={6} cols={1} />
+            <NotificationsSkeleton />
           ) : notifications.length === 0 ? (
             <EmptyState title="No notifications" filtered={!!isRead} onClearFilters={() => router.push('/notifications')} />
           ) : (
@@ -110,7 +130,7 @@ export default function NotificationsPage() {
   return (
     <Suspense fallback={
       <AdminLayout breadcrumb={[{ label: 'Notifications' }]}>
-        <TableSkeleton rows={6} cols={1} />
+        <NotificationsSkeleton />
       </AdminLayout>
     }>
       <NotificationsPageContent />
