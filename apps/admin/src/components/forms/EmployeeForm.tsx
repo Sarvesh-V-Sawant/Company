@@ -209,9 +209,9 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
       <div className="rounded-lg border border-gray-200 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-gray-900">Allow outside-geofence attendance</p>
+            <p className="text-sm font-medium text-gray-900">Bypass attendance location check</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Field / Sales employees — check-in bypasses the office geofence restriction.
+              Field / Sales employees — check-in bypasses all location checks (geofence and office IP).
             </p>
           </div>
           <button
@@ -376,9 +376,9 @@ function EditEmployeeForm({ employee, onSuccess }: { employee: Employee; onSucce
 
       <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
         <div>
-          <p className="text-sm font-medium text-gray-900">Allow outside-geofence attendance</p>
+          <p className="text-sm font-medium text-gray-900">Bypass attendance location check</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            Field employees — check-in bypasses the office geofence restriction.
+            Field / Sales employees — check-in bypasses all location checks (geofence and office IP).
           </p>
         </div>
         <button

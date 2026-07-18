@@ -356,8 +356,8 @@ export default function EmployeeDetailPage() {
             <Row label="Status"            value={<StatusBadge status={employee.isActive ? 'active' : 'inactive'} />} />
             <Row label="Field Employee"    value={
               employee.allowOutsideGeofence
-                ? <span className="inline-flex items-center gap-1 text-blue-700 font-medium">✓ Geofence bypass enabled</span>
-                : <span className="text-gray-400">Office-only (geofence enforced)</span>
+                ? <span className="inline-flex items-center gap-1 text-blue-700 font-medium">✓ Location bypass enabled</span>
+                : <span className="text-gray-400">Location check enforced</span>
             } />
             <Row label="Joining Date" value={employee.dateOfJoining ? format(parseISO(employee.dateOfJoining), 'dd MMM yyyy') : undefined} />
             <Row label="Created"      value={format(parseISO(employee.createdAt), 'dd MMM yyyy')} />

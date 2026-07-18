@@ -4,7 +4,7 @@ import { format, parseISO } from 'date-fns';
 import { MapPin, Clock, Search } from 'lucide-react';
 import useSWR from 'swr';
 import AdminLayout from '@components/layout/AdminLayout';
-import { TableSkeleton } from '@components/ui/skeleton';
+import { Skeleton } from '@components/ui/skeleton';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
 import { apiFetch } from '@lib/utils/api-client';
@@ -102,7 +102,9 @@ export default function LocationHistoryPage() {
         {!query ? (
           <p className="text-sm text-gray-500 text-center py-8">Select a date and click Search to view snapshots.</p>
         ) : isLoading ? (
-          <TableSkeleton />
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
         ) : snapshots.length === 0 ? (
           <p className="text-sm text-gray-500 text-center py-8">No location snapshots found for these filters.</p>
         ) : (
