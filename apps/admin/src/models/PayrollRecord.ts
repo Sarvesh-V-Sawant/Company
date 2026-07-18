@@ -13,6 +13,7 @@ export interface IEmployeeSnapshot {
 export interface IDeductionBreakdown {
   lwpDeduction: number;
   absentDeduction: number;
+  halfDayDeduction: number;
   manualDeduction: number;
   totalDeductions: number;
 }
@@ -37,6 +38,8 @@ export interface IPayrollRecord extends Document {
   halfDayLwpDays: number;
   paidLeaveDays: number;
   absentDays: number;
+  lateMarkCount: number;
+  halfDayDeductionDays: number;
   grossSalary: number;
   perDaySalary: number;
   deductionBreakdown: IDeductionBreakdown;
@@ -71,11 +74,14 @@ const PayrollRecordSchema = new Schema<IPayrollRecord>(
     halfDayLwpDays: { type: Number, default: 0 },
     paidLeaveDays: { type: Number, default: 0 },
     absentDays: { type: Number, default: 0 },
+    lateMarkCount: { type: Number, default: 0 },
+    halfDayDeductionDays: { type: Number, default: 0 },
     grossSalary: { type: Number, required: true, min: 0 },
     perDaySalary: { type: Number, required: true, min: 0 },
     deductionBreakdown: {
-      lwpDeduction: { type: Number, required: true, min: 0 },
+      lwpDeduction:    { type: Number, required: true, min: 0 },
       absentDeduction: { type: Number, required: true, min: 0 },
+      halfDayDeduction: { type: Number, default: 0, min: 0 },
       manualDeduction: { type: Number, default: 0, min: 0 },
       totalDeductions: { type: Number, required: true, min: 0 },
     },

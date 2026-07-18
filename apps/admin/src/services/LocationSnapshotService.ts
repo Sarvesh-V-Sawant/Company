@@ -83,20 +83,25 @@ export const LocationSnapshotService = {
     ]);
 
     return {
-      snapshots: snapshots.map((s) => ({
-        id:                  s._id.toString(),
-        employeeId:          s.employeeId.toString(),
-        attendanceSessionId: s.attendanceSessionId.toString(),
-        dateString:          s.dateString,
-        latitude:            s.latitude,
-        longitude:           s.longitude,
-        accuracy:            s.accuracy,
-        capturedAt:          s.capturedAt.toISOString(),
-        source:              s.source,
-        address:             s.address ?? null,
-        geocodingStatus:     s.geocodingStatus ?? null,
-        geocodingProvider:   s.geocodingProvider ?? null,
-      })),
+      snapshots: snapshots.map((s) => {
+        const emp = s.employeeId as unknown as { _id: mongoose.Types.ObjectId; firstName: string; lastName: string; employeeId: string } | null;
+        return {
+          id:                  s._id.toString(),
+          employeeId:          emp?._id?.toString() ?? s.employeeId.toString(),
+          employeeName:        emp ? `${emp.firstName} ${emp.lastName}` : null,
+          employeeCode:        emp?.employeeId ?? null,
+          attendanceSessionId: s.attendanceSessionId.toString(),
+          dateString:          s.dateString,
+          latitude:            s.latitude,
+          longitude:           s.longitude,
+          accuracy:            s.accuracy,
+          capturedAt:          s.capturedAt.toISOString(),
+          source:              s.source,
+          address:             s.address ?? null,
+          geocodingStatus:     s.geocodingStatus ?? null,
+          geocodingProvider:   s.geocodingProvider ?? null,
+        };
+      }),
       pagination: {
         total,
         page:       query.page,

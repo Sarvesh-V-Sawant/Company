@@ -156,6 +156,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           _showGpsSheet(_GpsError.outsideGeofence);
           return;
         }
+        if (code == 'ATT_003') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Check-in failed: you are not connected to the approved office network.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return;
+        }
         if (e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.sendTimeout ||

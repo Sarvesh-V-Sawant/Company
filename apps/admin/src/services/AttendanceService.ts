@@ -128,6 +128,7 @@ export interface CheckInInput {
   accuracy: number;
   nonce: string;
   clientTimestamp: string;
+  clientIp?: string;
 }
 
 export interface CheckOutInput {
@@ -196,8 +197,19 @@ export class AttendanceService {
     );
     const isWithinGeoFence = distanceFromOffice <= settings.geoFence.radiusMeters;
     const bypassGeofence = employeeProfile?.allowOutsideGeofence === true;
-    if (settings.geoFence.isEnabled && !isWithinGeoFence && !bypassGeofence) {
-      throw new AppError('ATT_001', 422, 'Outside geofence.');
+    const validationMode = settings.attendanceValidationMode ?? 'geofence';
+
+    if (!bypassGeofence) {
+      if (validationMode === 'geofence') {
+        if (settings.geoFence.isEnabled && !isWithinGeoFence) {
+          throw new AppError('ATT_001', 422, 'Outside geofence.');
+        }
+      } else if (validationMode === 'officeIp') {
+        const allowedIps = settings.allowedOfficeIps ?? [];
+        if (allowedIps.length > 0 && !allowedIps.includes(input.clientIp ?? '')) {
+          throw new AppError('ATT_003', 422, 'Not connected to the approved office network.');
+        }
+      }
     }
 
     // Compute IST date/time (BR-ATT-08)

@@ -116,6 +116,41 @@ export class SettingsService {
     return updated.statutoryConfig;
   }
 
+  static async updateAttendanceValidation(data: {
+    attendanceValidationMode?: 'geofence' | 'officeIp';
+    allowedOfficeIps?: string[];
+  }) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.attendanceValidationMode !== undefined)
+      $set.attendanceValidationMode = data.attendanceValidationMode;
+    if (data.allowedOfficeIps !== undefined)
+      $set.allowedOfficeIps = data.allowedOfficeIps;
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
+  static async updatePayrollRules(data: { halfDayAggregationCount?: number }) {
+    await connectDB();
+    const $set: Record<string, unknown> = {};
+    if (data.halfDayAggregationCount !== undefined)
+      $set['payrollRules.halfDayAggregationCount'] = data.halfDayAggregationCount;
+    if (Object.keys($set).length === 0) throw new AppError('GEN_001', 400, 'No fields to update.');
+    const updated = await CompanySettings.findByIdAndUpdate(
+      'company-settings',
+      { $set },
+      { new: true, runValidators: true },
+    ).lean() as (ICompanySettings & { _id: string }) | null;
+    if (!updated) throw new AppError('GEN_004', 404, 'Company settings not yet configured.');
+    return updated;
+  }
+
   static async listHolidays(year?: number) {
     await connectDB();
     const filter: Record<string, unknown> = year ? { year } : {};

@@ -155,8 +155,9 @@ async function computeForEmployee(params: {
   // Attendance aggregation for the month
   const attendanceDays = await AttendanceDay.find({ employeeId: employeeOid, year: yr, month: mo }).lean();
 
-  let presentFull = 0, halfDays = 0, halfDayLwpDays = 0, lwpFull = 0, paidLeaveDays = 0, absentDays = 0;
-  for (const day of attendanceDays as Array<{ status: string; leaveType?: string }>) {
+  let presentFull = 0, halfDays = 0, halfDayLwpDays = 0, lwpFull = 0, paidLeaveDays = 0, absentDays = 0, lateMarkCount = 0;
+  for (const day of attendanceDays as Array<{ status: string; leaveType?: string; isLateArrival?: boolean }>) {
+    if (day.isLateArrival) lateMarkCount++;
     switch (day.status) {
       case 'present':  presentFull++;  break;
       case 'half-day':
@@ -169,10 +170,12 @@ async function computeForEmployee(params: {
     }
   }
 
-  const effectiveLwpDays     = lwpFull + halfDayLwpDays * 0.5;
-  const effectivePresentDays = presentFull + halfDays * 0.5;
-  const manualDeduction      = existing?.manualDeduction ?? 0;
-  const manualDeductionRemark = existing?.manualDeductionRemark ?? '';
+  const attendanceHalfDays      = halfDays - halfDayLwpDays;
+  const effectiveLwpDays        = lwpFull + halfDayLwpDays * 0.5;
+  const effectivePresentDays    = presentFull + halfDays * 0.5;
+  const manualDeduction         = existing?.manualDeduction ?? 0;
+  const manualDeductionRemark   = existing?.manualDeductionRemark ?? '';
+  const halfDayAggregationCount = settings.payrollRules?.halfDayAggregationCount ?? 0;
 
   const engineResult = computePayroll({
     grossSalary:          employee.monthlySalary,
@@ -180,6 +183,8 @@ async function computeForEmployee(params: {
     effectiveLwpDays,
     absentDays,
     manualDeduction,
+    attendanceHalfDays,
+    halfDayAggregationCount,
   });
 
   const statutoryDeductions = computeStatutoryDeductions(
@@ -214,13 +219,16 @@ async function computeForEmployee(params: {
             halfDayLwpDays,
             paidLeaveDays,
             absentDays,
+            lateMarkCount,
+            halfDayDeductionDays: engineResult.halfDayDeductionDays,
             grossSalary:         employee.monthlySalary,
             perDaySalary:        engineResult.perDaySalary,
             deductionBreakdown: {
-              lwpDeduction:    engineResult.lwpDeduction,
-              absentDeduction: engineResult.absentDeduction,
+              lwpDeduction:     engineResult.lwpDeduction,
+              absentDeduction:  engineResult.absentDeduction,
+              halfDayDeduction: engineResult.halfDayDeduction,
               manualDeduction,
-              totalDeductions: engineResult.totalDeductions,
+              totalDeductions:  engineResult.totalDeductions,
             },
             manualDeduction,
             manualDeductionRemark,
@@ -487,13 +495,11 @@ export class PayrollService {
     if (!existing) throw new AppError('PAY_002', 404, 'Payroll record not found.');
     if (existing.status === 'finalised') throw new AppError('PAY_001', 409, 'Cannot adjust a finalised payroll.');
 
-    const engineResult = computePayroll({
-      grossSalary:          existing.grossSalary,
-      effectiveWorkingDays: existing.effectiveWorkingDays,
-      effectiveLwpDays:     existing.effectiveLwpDays,
-      absentDays:           existing.absentDays,
-      manualDeduction:      params.manualDeduction,
-    });
+    const bd = existing.deductionBreakdown;
+    const newTotalDeductions = Math.round(
+      (bd.lwpDeduction + bd.absentDeduction + (bd.halfDayDeduction ?? 0) + params.manualDeduction) * 100,
+    ) / 100;
+    const newNetSalary = Math.round(Math.max(0, existing.grossSalary - newTotalDeductions) * 100) / 100;
 
     const record = await PayrollRecord.findOneAndUpdate(
       { employeeId: employeeOid, yearMonth: params.yearMonth },
@@ -502,8 +508,8 @@ export class PayrollService {
           manualDeduction:                      params.manualDeduction,
           manualDeductionRemark:                params.remark,
           'deductionBreakdown.manualDeduction': params.manualDeduction,
-          'deductionBreakdown.totalDeductions': engineResult.totalDeductions,
-          netSalary:                            engineResult.netSalary,
+          'deductionBreakdown.totalDeductions': newTotalDeductions,
+          netSalary:                            newNetSalary,
         },
       },
       { new: true },

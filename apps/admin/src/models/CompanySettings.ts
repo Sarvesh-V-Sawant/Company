@@ -59,6 +59,10 @@ export interface IStatutoryConfig {
   tds: IStatutoryTDSConfig;
 }
 
+export interface IPayrollRules {
+  halfDayAggregationCount: number;
+}
+
 export interface ICompanySettings extends Document<string> {
   companyName: string;
   timezone: string;
@@ -81,6 +85,9 @@ export interface ICompanySettings extends Document<string> {
   attendanceReminderEnabled: boolean;
   attendanceReminderTime: string;
   statutoryConfig?: IStatutoryConfig;
+  attendanceValidationMode?: 'geofence' | 'officeIp';
+  allowedOfficeIps?: string[];
+  payrollRules?: IPayrollRules;
 }
 
 const CompanySettingsSchema = new Schema<ICompanySettings>({
@@ -161,6 +168,11 @@ const CompanySettingsSchema = new Schema<ICompanySettings>({
       enabled:  { type: Boolean, default: false },
       flatRate: { type: Number, default: 10, min: 0, max: 100 },
     },
+  },
+  attendanceValidationMode: { type: String, enum: ['geofence', 'officeIp'], default: 'geofence' },
+  allowedOfficeIps: [{ type: String }],
+  payrollRules: {
+    halfDayAggregationCount: { type: Number, default: 0, min: 0 },
   },
 });
 

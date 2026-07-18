@@ -90,9 +90,12 @@ export interface PayrollRecord {
   paidLeaveDays: number;
   halfDayLwpDays: number;
   perDaySalary: number;
+  lateMarkCount?: number;
+  halfDayDeductionDays?: number;
   deductionBreakdown: {
     lwpDeduction: number;
     absentDeduction: number;
+    halfDayDeduction?: number;
     manualDeduction: number;
     totalDeductions: number;
   };
@@ -141,6 +144,13 @@ export interface Settings {
     lng: number;
     radiusMeters: number;
     enabled: boolean;
+  };
+  attendanceValidation?: {
+    mode: 'geofence' | 'officeIp';
+    allowedOfficeIps: string[];
+  };
+  payrollRules?: {
+    halfDayAggregationCount: number;
   };
 }
 

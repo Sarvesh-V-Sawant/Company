@@ -171,6 +171,50 @@ export default function PayslipDetailPage() {
                 </div>
               </div>
 
+              {/* Deduction breakdown */}
+              <div className="border-t border-gray-100 pt-4 space-y-2">
+                <p className="text-xs font-medium text-gray-500 uppercase mb-3">Deduction Breakdown</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Per-day rate</span>
+                    <span>{fmtCurrency(r.perDaySalary)}</span>
+                  </div>
+                  {r.effectiveLwpDays > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>LWP ({r.effectiveLwpDays} day{r.effectiveLwpDays !== 1 ? 's' : ''})</span>
+                      <span className="text-red-600">−{fmtCurrency(r.deductionBreakdown.lwpDeduction)}</span>
+                    </div>
+                  )}
+                  {r.absentDays > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Absent ({r.absentDays} day{r.absentDays !== 1 ? 's' : ''})</span>
+                      <span className="text-red-600">−{fmtCurrency(r.deductionBreakdown.absentDeduction)}</span>
+                    </div>
+                  )}
+                  {(r.halfDayDeductionDays ?? 0) > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>
+                        Half-day attendance ({r.halfDays} half-day{r.halfDays !== 1 ? 's' : ''}
+                        {' → '}{r.halfDayDeductionDays} deduction day{(r.halfDayDeductionDays ?? 0) !== 1 ? 's' : ''})
+                      </span>
+                      <span className="text-red-600">−{fmtCurrency(r.deductionBreakdown.halfDayDeduction ?? 0)}</span>
+                    </div>
+                  )}
+                  {(r.lateMarkCount ?? 0) > 0 && (
+                    <div className="flex justify-between text-gray-400 text-xs">
+                      <span>Late arrivals (informational)</span>
+                      <span>{r.lateMarkCount} day{(r.lateMarkCount ?? 0) !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  {r.manualDeduction > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Manual deduction</span>
+                      <span className="text-red-600">−{fmtCurrency(r.manualDeduction)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Manual deduction — draft only */}
               {r.status === 'draft' && (
                 <div className="border-t border-gray-100 pt-4">

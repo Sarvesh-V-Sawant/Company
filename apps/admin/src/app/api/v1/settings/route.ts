@@ -29,6 +29,13 @@ const PatchBodySchema = z.object({
     radiusMeters: z.number().min(50).max(5000),
   }).optional(),
   workingDays: z.array(z.enum(WEEKDAYS)).min(1).optional(),
+  attendanceValidation: z.object({
+    mode: z.enum(['geofence', 'officeIp']),
+    allowedOfficeIps: z.array(z.string().ip({ version: 'v4' })).max(20),
+  }).optional(),
+  payrollRules: z.object({
+    halfDayAggregationCount: z.number().int().min(0).max(31),
+  }).optional(),
 });
 
 function toShape(s: Awaited<ReturnType<typeof SettingsService.getSettings>>) {
@@ -49,6 +56,13 @@ function toShape(s: Awaited<ReturnType<typeof SettingsService.getSettings>>) {
       lng:          s.geoFence.longitude,
       radiusMeters: s.geoFence.radiusMeters,
       enabled:      s.geoFence.isEnabled,
+    },
+    attendanceValidation: {
+      mode:             s.attendanceValidationMode ?? 'geofence',
+      allowedOfficeIps: s.allowedOfficeIps ?? [],
+    },
+    payrollRules: {
+      halfDayAggregationCount: s.payrollRules?.halfDayAggregationCount ?? 0,
     },
   };
 }
@@ -127,6 +141,17 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
     if (parsed.workingDays)
       ops.push(SettingsService.updateWorkingDays({ workingDays: parsed.workingDays }));
+
+    if (parsed.attendanceValidation)
+      ops.push(SettingsService.updateAttendanceValidation({
+        attendanceValidationMode: parsed.attendanceValidation.mode,
+        allowedOfficeIps:         parsed.attendanceValidation.allowedOfficeIps,
+      }));
+
+    if (parsed.payrollRules)
+      ops.push(SettingsService.updatePayrollRules({
+        halfDayAggregationCount: parsed.payrollRules.halfDayAggregationCount,
+      }));
 
     if (ops.length === 0) return apiError('GEN_001', 'No updates provided.', 400);
 

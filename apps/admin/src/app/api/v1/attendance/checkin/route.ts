@@ -5,7 +5,7 @@ import { AttendanceService } from '@services/AttendanceService';
 import { AppError } from '@services/AuthService';
 import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { apiError, success } from '@lib/utils/api-response';
-import { attendanceLimiter, checkRateLimit } from '@mw/rateLimiter';
+import { attendanceLimiter, checkRateLimit, getClientIp } from '@mw/rateLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    const clientIp = getClientIp(request);
     const result = await AttendanceService.checkIn({
       employeeId: payload.userId,
       deviceFingerprintHeader,
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       accuracy: parsed.accuracy,
       nonce: parsed.nonce,
       clientTimestamp: parsed.timestamp,
+      clientIp,
     });
     return success(result);
   } catch (err) {
