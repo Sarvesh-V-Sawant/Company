@@ -206,8 +206,8 @@ export class AttendanceService {
         }
       } else if (validationMode === 'officeIp') {
         const allowedIps = settings.allowedOfficeIps ?? [];
-        if (allowedIps.length > 0 && !allowedIps.includes(input.clientIp ?? '')) {
-          throw new AppError('ATT_003', 422, 'Not connected to the approved office network.');
+        if (allowedIps.length === 0 || !allowedIps.includes(input.clientIp ?? '')) {
+          throw new AppError('ATT_004', 422, 'Not connected to the approved office network.');
         }
       }
     }

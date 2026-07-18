@@ -156,7 +156,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           _showGpsSheet(_GpsError.outsideGeofence);
           return;
         }
-        if (code == 'ATT_003') {
+        if (code == 'ATT_004') {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Check-in failed: you are not connected to the approved office network.'),

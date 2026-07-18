@@ -1,16 +1,18 @@
 'use client';
 import Link from 'next/link';
-import { Building2, CalendarX, Tags, MapPin, Clock, CalendarDays, ChevronRight, Landmark } from 'lucide-react';
+import { Building2, CalendarX, Tags, MapPin, Clock, CalendarDays, ChevronRight, Landmark, ShieldCheck, Wallet } from 'lucide-react';
 import AdminLayout from '@components/layout/AdminLayout';
 
 const SETTINGS = [
-  { href: '/settings/company',      icon: Building2,   label: 'Company',              description: 'Name, timezone, currency and address' },
-  { href: '/settings/shift',        icon: Clock,       label: 'Shift',                description: 'Working hours and grace period' },
-  { href: '/settings/working-days', icon: CalendarDays,label: 'Working Days',         description: 'Select which days are working days' },
-  { href: '/settings/holidays',     icon: CalendarX,   label: 'Holidays',             description: 'Manage company holidays' },
-  { href: '/settings/leave-types',  icon: Tags,        label: 'Leave Types',          description: 'Configure leave type codes and allocations' },
-  { href: '/settings/geofence',     icon: MapPin,      label: 'Geofence',             description: 'Enforce location-based check-in/out' },
-  { href: '/settings/statutory',    icon: Landmark,    label: 'Statutory Deductions', description: 'PF, ESIC, PT, TDS — disabled by default' },
+  { href: '/settings/company',              icon: Building2,   label: 'Company',                    description: 'Name, timezone, currency and address' },
+  { href: '/settings/shift',               icon: Clock,       label: 'Shift',                      description: 'Working hours and grace period' },
+  { href: '/settings/working-days',        icon: CalendarDays,label: 'Working Days',               description: 'Select which days are working days' },
+  { href: '/settings/holidays',            icon: CalendarX,   label: 'Holidays',                   description: 'Manage company holidays' },
+  { href: '/settings/leave-types',         icon: Tags,        label: 'Leave Types',                description: 'Configure leave type codes and allocations' },
+  { href: '/settings/geofence',            icon: MapPin,      label: 'Geofence',                   description: 'GPS radius for check-in location' },
+  { href: '/settings/attendance-validation', icon: ShieldCheck, label: 'Attendance Validation',    description: 'Geofence or office network/IP check-in validation' },
+  { href: '/settings/payroll-rules',       icon: Wallet,      label: 'Payroll Rules',              description: 'Half-day aggregation and deduction configuration' },
+  { href: '/settings/statutory',           icon: Landmark,    label: 'Statutory Deductions',       description: 'PF, ESIC, PT, TDS — disabled by default' },
 ];
 
 export default function SettingsPage() {
