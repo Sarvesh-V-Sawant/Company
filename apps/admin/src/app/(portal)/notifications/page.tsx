@@ -1,4 +1,5 @@
 'use client';
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -15,7 +16,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { apiFetch } from '@lib/utils/api-client';
 import { cn } from '@lib/utils/cn';
 
-export default function NotificationsPage() {
+function NotificationsPageContent() {
   const router = useRouter();
   const params = useSearchParams();
   const { page, limit, setPage, buildQuery } = usePagination(20);
@@ -78,8 +79,7 @@ export default function NotificationsPage() {
                   n.isRead ? 'border-gray-200' : 'border-blue-200 bg-blue-50/30',
                 )}
               >
-                {!n.isRead && <div className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />}
-                {n.isRead  && <div className="mt-1.5 h-2 w-2 rounded-full bg-transparent shrink-0" />}
+                <div className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', n.isRead ? 'bg-transparent' : 'bg-blue-500')} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <p className={cn('text-sm font-medium', n.isRead ? 'text-gray-700' : 'text-gray-900')}>{n.title}</p>
@@ -103,5 +103,17 @@ export default function NotificationsPage() {
         )}
       </div>
     </AdminLayout>
+  );
+}
+
+export default function NotificationsPage() {
+  return (
+    <Suspense fallback={
+      <AdminLayout breadcrumb={[{ label: 'Notifications' }]}>
+        <TableSkeleton rows={6} cols={1} />
+      </AdminLayout>
+    }>
+      <NotificationsPageContent />
+    </Suspense>
   );
 }
