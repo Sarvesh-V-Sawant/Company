@@ -218,12 +218,15 @@ export class AttendanceService {
     const localHHMM  = toLocalHHMM(serverTime, timezone);
     const dayOfWeek  = toLocalDayOfWeek(serverTime, timezone);
 
-    // Determine whether this session is remote and why the geofence was bypassed
+    // Determine whether this session is remote and why the geofence was bypassed.
+    // In officeIp mode the geofence is not the validation gate, so bypass employees
+    // are always treated as remote (they skipped the IP check, not the geofence).
     let isRemote = false;
     let remoteSource: 'employeeOverride' | 'workAwayApproval' | undefined;
     let remoteApprovalId: mongoose.Types.ObjectId | undefined;
 
-    if (!isWithinGeoFence && bypassGeofence) {
+    const treatedAsRemote = bypassGeofence && (validationMode === 'officeIp' || !isWithinGeoFence);
+    if (treatedAsRemote) {
       isRemote = true;
       const workAwayReg = await Regularization.findOne({
         employeeId: new mongoose.Types.ObjectId(input.employeeId),

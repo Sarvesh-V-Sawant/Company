@@ -59,16 +59,16 @@ export default function SettingsAttendanceValidationForm({ settings, onSuccess }
   const detectCurrentIp = async () => {
     setDetecting(true);
     try {
-      const res = await apiFetch<{ success: boolean; data: { currentIp: string; source: string } }>('/api/v1/settings/current-ip');
-      const ip = res.data?.currentIp ?? '';
+      const res = await apiFetch<{ success: boolean; data: { currentIp: string; ipVersion: string; isUsableForOfficeIp: boolean; source: string; message: string | null } }>('/api/v1/settings/current-ip');
+      const { currentIp: ip, isUsableForOfficeIp, message } = res.data ?? {};
       if (!ip) { toast.error('Could not detect current network IP'); return; }
-      if (ip.includes(':')) {
-        toast.error('IPv6 detected — please enter your office public IPv4 address manually');
+      if (!isUsableForOfficeIp) {
+        toast.error(message ?? 'Detected IP cannot be used for attendance check-in validation. Enter your office public IPv4 manually.');
         return;
       }
       if (ips.includes(ip)) { toast.info('This IP is already in the allowlist'); return; }
       setValue('allowedOfficeIps', [...ips, ip]);
-      toast.success(`Current network IP added: ${ip}`);
+      toast.success(`Office public IP added: ${ip}`);
     } catch {
       toast.error('Could not detect current network IP');
     } finally {
@@ -154,11 +154,11 @@ export default function SettingsAttendanceValidationForm({ settings, onSuccess }
             }
             {detecting ? 'Detecting…' : 'Add Current Network IP'}
           </Button>
-          <div className="mt-2 space-y-1 text-xs text-gray-400">
-            <p>Connect this device to the office WiFi/network, then click <strong>Add Current Network IP</strong>.</p>
-            <p>This detects the office public internet IP — not the private WiFi IP (192.168.x.x).</p>
-            <p>Employees must be on this office network to check in when Office Network/IP mode is active.</p>
-            <p>Field/Sales employees with location bypass enabled can check in from anywhere.</p>
+          <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 space-y-1 text-xs text-amber-800">
+            <p><strong>This controls attendance check-in, not app login.</strong> Employees can log into the app from anywhere; this setting decides where office employees can check in.</p>
+            <p>Connect this device to the office WiFi/network and click <strong>Add Current Network IP</strong>. On localhost this will show a local address — use the deployed admin site from office.</p>
+            <p>Adds the office public internet IP — not the private WiFi IP (192.168.x.x). To find it manually: open <strong>whatismyip.com</strong> from office WiFi and copy the IPv4 address.</p>
+            <p>Field/Sales employees with location bypass can check in from anywhere and are tracked hourly via location snapshots.</p>
           </div>
         </div>
       )}
