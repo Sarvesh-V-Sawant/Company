@@ -4,7 +4,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Loader2, Wifi } from 'lucide-react';
 import { Button } from '@components/ui/button';
 import { Input } from '@components/ui/input';
 import { apiFetch } from '@lib/utils/api-client';
@@ -21,6 +21,7 @@ interface Props { settings?: Settings; onSuccess?: () => void }
 export default function SettingsAttendanceValidationForm({ settings, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [newIp, setNewIp] = useState('');
+  const [detecting, setDetecting] = useState(false);
 
   const { register, handleSubmit, reset, control, setValue, watch } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -53,6 +54,26 @@ export default function SettingsAttendanceValidationForm({ settings, onSuccess }
 
   const removeIp = (ip: string) => {
     setValue('allowedOfficeIps', ips.filter(x => x !== ip));
+  };
+
+  const detectCurrentIp = async () => {
+    setDetecting(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: { currentIp: string; source: string } }>('/api/v1/settings/current-ip');
+      const ip = res.data?.currentIp ?? '';
+      if (!ip) { toast.error('Could not detect current network IP'); return; }
+      if (ip.includes(':')) {
+        toast.error('IPv6 detected — please enter your office public IPv4 address manually');
+        return;
+      }
+      if (ips.includes(ip)) { toast.info('This IP is already in the allowlist'); return; }
+      setValue('allowedOfficeIps', [...ips, ip]);
+      toast.success(`Current network IP added: ${ip}`);
+    } catch {
+      toast.error('Could not detect current network IP');
+    } finally {
+      setDetecting(false);
+    }
   };
 
   const onSubmit = async (data: Form) => {
@@ -88,7 +109,7 @@ export default function SettingsAttendanceValidationForm({ settings, onSuccess }
             </div>
           </label>
         </div>
-        <p className="mt-2 text-xs text-amber-600">Field/sales employees with &ldquo;Allow Outside Geofence&rdquo; bypass both modes.</p>
+        <p className="mt-2 text-xs text-amber-600">Field/sales employees with &ldquo;Bypass attendance location check&rdquo; enabled bypass both modes.</p>
       </div>
 
       {mode === 'officeIp' && (
@@ -119,7 +140,26 @@ export default function SettingsAttendanceValidationForm({ settings, onSuccess }
               <Plus className="h-4 w-4 mr-1" /> Add
             </Button>
           </div>
-          <p className="mt-1.5 text-xs text-gray-400">Enter the public IP of your office network. Check whatismyip.com from your office to find it.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={detectCurrentIp}
+            disabled={detecting}
+            className="w-full mt-2"
+          >
+            {detecting
+              ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              : <Wifi className="h-4 w-4 mr-1.5" />
+            }
+            {detecting ? 'Detecting…' : 'Add Current Network IP'}
+          </Button>
+          <div className="mt-2 space-y-1 text-xs text-gray-400">
+            <p>Connect this device to the office WiFi/network, then click <strong>Add Current Network IP</strong>.</p>
+            <p>This detects the office public internet IP — not the private WiFi IP (192.168.x.x).</p>
+            <p>Employees must be on this office network to check in when Office Network/IP mode is active.</p>
+            <p>Field/Sales employees with location bypass enabled can check in from anywhere.</p>
+          </div>
         </div>
       )}
 
