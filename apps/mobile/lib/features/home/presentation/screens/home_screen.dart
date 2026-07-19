@@ -214,9 +214,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
     try {
       await ref.read(attendanceProvider.notifier).checkOut();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-out failed. Please try again.')));
+    } catch (e) {
+      if (!mounted) return;
+      if (e is DioException) {
+        final code = (e.response?.data as Map<String, dynamic>?)?['error']?['code'] as String? ?? '';
+        if (code == 'ATT_001') {
+          _showGpsSheet(_GpsError.outsideGeofence);
+          return;
+        }
+        if (code == 'ATT_004') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Check-out failed: you are not connected to the approved office network.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return;
+        }
+        final msg = (e.response?.data as Map<String, dynamic>?)?['error']?['message'] as String?;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg?.isNotEmpty == true ? msg! : 'Check-out failed. Please try again.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Check-out failed. Please try again.')),
+        );
       }
     }
   }

@@ -89,7 +89,27 @@ class AttendanceNotifier extends StateNotifier<AsyncValue<TodayAttendance?>> {
   Future<void> checkOut() async {
     _setCheckInState(CheckInState.checkoutSubmitting);
     try {
-      final today = await _source.checkOut();
+      // Attempt GPS for geofence validation; non-fatal if unavailable (office IP mode doesn't need it).
+      double? lat, lng, acc;
+      try {
+        final permission = await Geolocator.checkPermission();
+        if (permission != LocationPermission.denied && permission != LocationPermission.deniedForever) {
+          if (await Geolocator.isLocationServiceEnabled()) {
+            final pos = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: Duration(seconds: 10),
+              ),
+            );
+            lat = pos.latitude;
+            lng = pos.longitude;
+            acc = pos.accuracy;
+          }
+        }
+      } catch (_) {
+        // GPS unavailable — backend validates IP mode regardless
+      }
+      final today = await _source.checkOut(latitude: lat, longitude: lng, accuracy: acc);
       _stopSyncTimer();
       _stopLocationTracking();
       state = AsyncValue.data(today);

@@ -135,6 +135,10 @@ export interface CheckOutInput {
   employeeId: string;
   nonce: string;
   clientTimestamp: string;
+  clientIp?: string;
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
 }
 
 export class AttendanceService {
@@ -432,6 +436,34 @@ export class AttendanceService {
       throw err;
     }
 
+    // Validate attendance location at checkout — same rules as check-in
+    const checkoutEmployeeProfile = await Employee.findOne({ userId: new mongoose.Types.ObjectId(input.employeeId) }).lean<IEmployee>();
+    const checkoutBypassGeofence = checkoutEmployeeProfile?.allowOutsideGeofence === true;
+    const checkoutValidationMode = settings.attendanceValidationMode ?? 'geofence';
+    const hasCheckoutLocation = input.latitude !== undefined && input.longitude !== undefined;
+    const checkoutDistanceFromOffice = hasCheckoutLocation
+      ? haversineMeters(
+          { latitude: input.latitude!, longitude: input.longitude! },
+          { latitude: settings.geoFence.latitude, longitude: settings.geoFence.longitude },
+        )
+      : 0;
+    const checkoutIsWithinGeoFence = hasCheckoutLocation
+      ? checkoutDistanceFromOffice <= settings.geoFence.radiusMeters
+      : true;
+
+    if (!checkoutBypassGeofence) {
+      if (checkoutValidationMode === 'officeIp') {
+        const allowedIps = settings.allowedOfficeIps ?? [];
+        if (allowedIps.length === 0 || !allowedIps.includes(input.clientIp ?? '')) {
+          throw new AppError('ATT_004', 422, 'Not connected to the approved office network.');
+        }
+      } else if (checkoutValidationMode === 'geofence' && hasCheckoutLocation) {
+        if (settings.geoFence.isEnabled && !checkoutIsWithinGeoFence) {
+          throw new AppError('ATT_001', 422, 'Outside geofence.');
+        }
+      }
+    }
+
     // Compute duration
     const durationMinutes = Math.round(
       (serverTime.getTime() - activeSession.checkIn.timestamp.getTime()) / 60_000,
@@ -458,12 +490,12 @@ export class AttendanceService {
               checkOut: {
                 timestamp: serverTime,
                 nonce: input.nonce,
-                latitude: 0,
-                longitude: 0,
-                accuracy: 0,
-                distanceFromOffice: 0,
+                latitude: input.latitude ?? 0,
+                longitude: input.longitude ?? 0,
+                accuracy: input.accuracy ?? 0,
+                distanceFromOffice: checkoutDistanceFromOffice,
                 deviceFingerprint: activeSession.checkIn.deviceFingerprint,
-                isWithinGeoFence: true,
+                isWithinGeoFence: checkoutIsWithinGeoFence,
               },
             },
           },

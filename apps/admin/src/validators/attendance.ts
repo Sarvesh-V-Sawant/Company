@@ -15,6 +15,9 @@ export const CheckInSchema = z.object({
 export const CheckOutSchema = z.object({
   nonce:     z.string().regex(UUID_V4_REGEX, 'Must be UUID v4').max(36),
   timestamp: z.string().regex(ISO8601_REGEX, 'Must be ISO 8601 UTC datetime'),
+  latitude:  z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  accuracy:  z.number().min(0).optional(),
 });
 
 export const AttendanceHistoryQuerySchema = z.object({

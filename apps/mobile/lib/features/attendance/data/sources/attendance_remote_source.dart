@@ -48,11 +48,17 @@ class AttendanceRemoteSource {
     return getToday();
   }
 
-  Future<TodayAttendance> checkOut() async {
-    await _dio.post(ApiEndpoints.checkOut, data: {
+  Future<TodayAttendance> checkOut({double? latitude, double? longitude, double? accuracy}) async {
+    final data = <String, dynamic>{
       'nonce': const Uuid().v4(),
       'timestamp': DateTime.now().toUtc().toIso8601String(),
-    });
+    };
+    if (latitude != null && longitude != null && accuracy != null) {
+      data['latitude'] = latitude;
+      data['longitude'] = longitude;
+      data['accuracy'] = accuracy;
+    }
+    await _dio.post(ApiEndpoints.checkOut, data: data);
     return getToday();
   }
 
