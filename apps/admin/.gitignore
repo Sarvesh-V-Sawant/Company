@@ -160,6 +160,11 @@ coverage/
 *.sqlite3
 
 ############################
+# Ops document vault (dev local adapter)
+############################
+.genesis-docs/
+
+############################
 # Misc
 ############################
 .cache/

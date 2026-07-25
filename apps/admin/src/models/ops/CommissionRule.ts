@@ -9,6 +9,8 @@ export interface ICommissionRule extends Document {
   value: number;
   effectiveFrom: Date;
   effectiveTo?: Date;
+  gstApplicable?: boolean;
+  sacCode?: string;
   notes?: string;
   isActive: boolean;
   createdBy: mongoose.Types.ObjectId;
@@ -27,6 +29,8 @@ const CommissionRuleSchema = new Schema<ICommissionRule>(
     value:          { type: Number, required: true },
     effectiveFrom:  { type: Date, required: true },
     effectiveTo:    Date,
+    gstApplicable:  Boolean,
+    sacCode:        String,
     notes:          String,
     isActive:       { type: Boolean, default: true },
     createdBy:      { type: Schema.Types.ObjectId, ref: 'User', required: true },

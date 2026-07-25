@@ -8,6 +8,6 @@ export const ROLES = {
   EMPLOYEE:    'employee'    as UserRole,
 };
 
-export const WORK_DESK_ROLES: UserRole[] = ['super_admin', 'admin', 'manager', 'executive', 'employee'];
+export const WORK_DESK_ROLES: UserRole[] = ['super_admin', 'admin', 'manager', 'executive'];
 export const ATTENDANCE_ADMIN_ROLES: UserRole[] = ['super_admin', 'admin'];
 export const CHAIN_APPROVE_ROLES: UserRole[] = ['super_admin', 'admin', 'manager'];

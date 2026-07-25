@@ -13,8 +13,7 @@ export function assertAttendanceAdmin(payload: JwtPayload): void {
   assertRole(payload, 'admin', 'super_admin');
 }
 
-// Work Desk access — all authenticated roles
-export function assertWorkDeskAccess(_payload: JwtPayload): void {
-  // All authenticated roles can access Work Desk; this is a no-op guard placeholder
-  // kept for future policy changes.
+// Work Desk: super_admin, admin, manager, executive. employee role is Attendance-only.
+export function assertWorkDeskAccess(payload: JwtPayload): void {
+  assertRole(payload, 'super_admin', 'admin', 'manager', 'executive');
 }
