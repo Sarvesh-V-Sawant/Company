@@ -13,6 +13,7 @@ import StatusBadge from '@components/shared/StatusBadge';
 import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
+import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -24,7 +25,7 @@ interface Product {
 interface ApiResp { success: boolean; data: Product[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 let _debounce: ReturnType<typeof setTimeout> | null = null;
-type ModalState = null | { mode: 'create' } | { mode: 'edit'; product: Product };
+type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 const emptyForm = { sku: '', name: '', manufacturerId: '', uom: 'PCS', packSize: '', hsnCode: '', gstRatePercent: '' };
 
 export default function ProductsPage() {
@@ -34,6 +35,7 @@ export default function ProductsPage() {
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const search = params.get('search') ?? '';
   const active = params.get('isActive') ?? '';
@@ -57,9 +59,15 @@ export default function ProductsPage() {
   };
 
   const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
-  const openEdit   = (p: Product) => {
-    setForm({ sku: p.sku, name: p.name, manufacturerId: typeof p.manufacturerId === 'object' ? p.manufacturerId._id : String(p.manufacturerId), uom: p.uom, packSize: p.packSize != null ? String(p.packSize) : '', hsnCode: p.hsnCode ?? '', gstRatePercent: p.gstRatePercent != null ? String(p.gstRatePercent) : '' });
-    setModal({ mode: 'edit', product: p });
+  const openEdit = async (id: string) => {
+    setModal({ mode: 'edit', id });
+    setLoadingRecord(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: Product }>(`/api/v1/ops/products/${id}`);
+      const p = res.data;
+      setForm({ sku: p.sku, name: p.name, manufacturerId: typeof p.manufacturerId === 'object' ? p.manufacturerId._id : String(p.manufacturerId), uom: p.uom, packSize: p.packSize != null ? String(p.packSize) : '', hsnCode: p.hsnCode ?? '', gstRatePercent: p.gstRatePercent != null ? String(p.gstRatePercent) : '' });
+    } catch { toast.error('Failed to load product details'); setModal(null); }
+    finally { setLoadingRecord(false); }
   };
 
   const handleSave = async () => {
@@ -76,7 +84,7 @@ export default function ProductsPage() {
         await apiFetch('/api/v1/ops/products', { method: 'POST', body: JSON.stringify({ ...payload, sku: form.sku, manufacturerId: form.manufacturerId }) });
         toast.success('Product created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/products/${modal.product._id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        await apiFetch(`/api/v1/ops/products/${modal.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
         toast.success('Product updated');
       }
       setModal(null);
@@ -142,7 +150,7 @@ export default function ProductsPage() {
                     <td className="px-4 py-3"><StatusBadge status={p.isActive ? 'active' : 'inactive'} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(p._id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleStatus(p)}>{p.isActive ? 'Deactivate' : 'Activate'}</Button>
                       </div>
                     </td>
@@ -158,14 +166,15 @@ export default function ProductsPage() {
       </div>
 
       <Dialog open={modal !== null} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Add Product' : 'Edit Product'}
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
-        <div className="space-y-3">
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving || loadingRecord}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
+        {loadingRecord ? <div className="py-8 text-center text-sm text-gray-400">Loading…</div> : <div className="space-y-3">
           {modal?.mode === 'create' && (
             <>
               <div><label className="text-sm font-medium text-gray-700 block mb-1">SKU *</label>
                 <Input value={form.sku} onChange={e => setForm(p => ({ ...p, sku: e.target.value.toUpperCase() }))} placeholder="e.g. PROD001" /></div>
-              <div><label className="text-sm font-medium text-gray-700 block mb-1">Manufacturer ID *</label>
-                <Input value={form.manufacturerId} onChange={e => setForm(p => ({ ...p, manufacturerId: e.target.value }))} placeholder="MongoDB ObjectId" /></div>
+              <div><label className="text-sm font-medium text-gray-700 block mb-1">Manufacturer *</label>
+                <EntityPicker endpoint="/api/v1/ops/manufacturers" value={form.manufacturerId}
+                  onChange={id => setForm(p => ({ ...p, manufacturerId: id }))} placeholder="Search manufacturers…" /></div>
             </>
           )}
           <div><label className="text-sm font-medium text-gray-700 block mb-1">Name *</label>
@@ -182,7 +191,7 @@ export default function ProductsPage() {
             <div><label className="text-sm font-medium text-gray-700 block mb-1">GST Rate %</label>
               <Input type="number" value={form.gstRatePercent} onChange={e => setForm(p => ({ ...p, gstRatePercent: e.target.value }))} placeholder="0–100" /></div>
           </div>
-        </div>
+        </div>}
       </Dialog>
     </AdminLayout>
   );

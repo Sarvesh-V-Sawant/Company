@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,21 +13,25 @@ import StatusBadge from '@components/shared/StatusBadge';
 import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
+import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
 import { usePagination } from '@/hooks/usePagination';
 
 interface Canteen {
   _id: string; code: string; name: string; type: 'main' | 'subsidiary';
+  parentCanteenId?: string;
   parentCanteen?: { _id: string; code: string; name: string };
-  subsidiaryCount?: number; gstin?: string; phone?: string; email?: string; isActive: boolean;
+  subsidiaryCount?: number; gstin?: string; contactPerson?: string; phone?: string; email?: string; isActive: boolean;
 }
 interface ApiResp { success: boolean; data: Canteen[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 let _debounce: ReturnType<typeof setTimeout> | null = null;
+type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 
-type ModalState = null | { mode: 'create' } | { mode: 'edit'; canteen: Canteen };
-
-const emptyForm = { code: '', name: '', type: 'main' as 'main' | 'subsidiary', parentCanteenId: '', gstin: '', contactPerson: '', phone: '', email: '' };
+const emptyForm = {
+  code: '', name: '', type: 'main' as 'main' | 'subsidiary',
+  parentCanteenId: '', gstin: '', contactPerson: '', phone: '', email: '',
+};
 
 export default function CanteensPage() {
   const router = useRouter();
@@ -36,6 +40,7 @@ export default function CanteensPage() {
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const search = params.get('search') ?? '';
   const type   = params.get('type') ?? '';
@@ -54,27 +59,46 @@ export default function CanteensPage() {
   };
 
   const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
-  const openEdit   = (c: Canteen) => {
-    setForm({ code: c.code, name: c.name, type: c.type, parentCanteenId: c.parentCanteen?._id ?? '', gstin: c.gstin ?? '', contactPerson: '', phone: c.phone ?? '', email: c.email ?? '' });
-    setModal({ mode: 'edit', canteen: c });
+
+  const openEdit = async (id: string) => {
+    setModal({ mode: 'edit', id });
+    setLoadingRecord(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: Canteen }>(`/api/v1/ops/canteens/${id}`);
+      const c = res.data;
+      setForm({
+        code: c.code, name: c.name, type: c.type,
+        parentCanteenId: String(c.parentCanteenId ?? ''),
+        gstin: c.gstin ?? '', contactPerson: c.contactPerson ?? '',
+        phone: c.phone ?? '', email: c.email ?? '',
+      });
+    } catch { toast.error('Failed to load canteen details'); setModal(null); }
+    finally { setLoadingRecord(false); }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/canteens', { method: 'POST', body: JSON.stringify({ ...form, type: form.type, parentCanteenId: form.parentCanteenId || undefined, gstin: form.gstin || undefined }) });
+        await apiFetch('/api/v1/ops/canteens', { method: 'POST', body: JSON.stringify({
+          code: form.code, name: form.name, type: form.type,
+          parentCanteenId: form.parentCanteenId || undefined,
+          gstin: form.gstin || undefined, contactPerson: form.contactPerson || undefined,
+          phone: form.phone || undefined, email: form.email || undefined,
+        }) });
         toast.success('Canteen created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/canteens/${modal.canteen._id}`, { method: 'PATCH', body: JSON.stringify({ name: form.name, gstin: form.gstin || undefined, phone: form.phone || undefined, email: form.email || undefined }) });
+        await apiFetch(`/api/v1/ops/canteens/${modal.id}`, { method: 'PATCH', body: JSON.stringify({
+          name: form.name, gstin: form.gstin || undefined,
+          contactPerson: form.contactPerson || undefined,
+          phone: form.phone || undefined, email: form.email || undefined,
+        }) });
         toast.success('Canteen updated');
       }
       setModal(null);
       mutate();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Save failed';
-      toast.error(msg);
-    } finally { setSaving(false); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Save failed'); }
+    finally { setSaving(false); }
   };
 
   const toggleStatus = async (c: Canteen) => {
@@ -139,7 +163,7 @@ export default function CanteensPage() {
                     <td className="px-4 py-3"><StatusBadge status={c.isActive ? 'active' : 'inactive'} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(c)}>Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(c._id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleStatus(c)}>{c.isActive ? 'Deactivate' : 'Activate'}</Button>
                       </div>
                     </td>
@@ -154,33 +178,51 @@ export default function CanteensPage() {
         </div>
       </div>
 
-      <Dialog open={modal !== null} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Add Canteen' : 'Edit Canteen'}
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
-        <div className="space-y-3">
-          {modal?.mode === 'create' && (
-            <>
-              <div><label className="text-sm font-medium text-gray-700 block mb-1">Code *</label>
-                <Input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. CNT001" /></div>
-              <div><label className="text-sm font-medium text-gray-700 block mb-1">Type *</label>
-                <Select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value as 'main' | 'subsidiary' }))} className="w-full">
-                  <option value="main">Main</option>
-                  <option value="subsidiary">Subsidiary</option>
-                </Select></div>
-              {form.type === 'subsidiary' && (
-                <div><label className="text-sm font-medium text-gray-700 block mb-1">Parent Canteen ID *</label>
-                  <Input value={form.parentCanteenId} onChange={e => setForm(p => ({ ...p, parentCanteenId: e.target.value }))} placeholder="MongoDB ObjectId of parent" /></div>
-              )}
-            </>
-          )}
-          <div><label className="text-sm font-medium text-gray-700 block mb-1">Name *</label>
-            <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Canteen name" /></div>
-          <div><label className="text-sm font-medium text-gray-700 block mb-1">GSTIN</label>
-            <Input value={form.gstin} onChange={e => setForm(p => ({ ...p, gstin: e.target.value.toUpperCase() }))} placeholder="22ABCDE1234F1Z5" /></div>
-          <div><label className="text-sm font-medium text-gray-700 block mb-1">Phone</label>
-            <Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
-          <div><label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
-            <Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></div>
-        </div>
+      <Dialog open={modal !== null} onClose={() => setModal(null)}
+        title={modal?.mode === 'create' ? 'Add Canteen' : 'Edit Canteen'}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setModal(null)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || loadingRecord}>{saving ? 'Saving…' : 'Save'}</Button>
+          </div>
+        }>
+        {loadingRecord ? (
+          <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+        ) : (
+          <div className="space-y-3">
+            {modal?.mode === 'create' && (
+              <>
+                <div><label className="text-sm font-medium text-gray-700 block mb-1">Code *</label>
+                  <Input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. CNT001" /></div>
+                <div><label className="text-sm font-medium text-gray-700 block mb-1">Type *</label>
+                  <Select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value as 'main' | 'subsidiary', parentCanteenId: '' }))} className="w-full">
+                    <option value="main">Main</option>
+                    <option value="subsidiary">Subsidiary</option>
+                  </Select></div>
+                {form.type === 'subsidiary' && (
+                  <div><label className="text-sm font-medium text-gray-700 block mb-1">Parent Canteen *</label>
+                    <EntityPicker
+                      endpoint="/api/v1/ops/canteens"
+                      value={form.parentCanteenId}
+                      onChange={(id) => setForm(p => ({ ...p, parentCanteenId: id }))}
+                      placeholder="Search main canteens…"
+                      extraQuery={{ type: 'main' }}
+                    /></div>
+                )}
+              </>
+            )}
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">Name *</label>
+              <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Canteen name" /></div>
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">GSTIN</label>
+              <Input value={form.gstin} onChange={e => setForm(p => ({ ...p, gstin: e.target.value.toUpperCase() }))} placeholder="22ABCDE1234F1Z5" /></div>
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">Contact Person</label>
+              <Input value={form.contactPerson} onChange={e => setForm(p => ({ ...p, contactPerson: e.target.value }))} /></div>
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">Phone</label>
+              <Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
+              <Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></div>
+          </div>
+        )}
       </Dialog>
     </AdminLayout>
   );

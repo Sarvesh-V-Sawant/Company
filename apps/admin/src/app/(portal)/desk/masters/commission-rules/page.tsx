@@ -14,6 +14,7 @@ import StatusBadge from '@components/shared/StatusBadge';
 import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
+import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -30,7 +31,7 @@ interface CommissionRule {
 }
 interface ApiResp { success: boolean; data: CommissionRule[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
-type ModalState = null | { mode: 'create' } | { mode: 'edit'; rule: CommissionRule };
+type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 const emptyForm = { scope: 'manufacturer' as CommScope, scopeId: '', type: 'percentage' as CommType, value: '', effectiveFrom: '', effectiveTo: '', gstApplicable: false, sacCode: '', notes: '' };
 
 function scopeRef(r: CommissionRule) {
@@ -50,6 +51,7 @@ export default function CommissionRulesPage() {
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const scope  = params.get('scope') ?? '';
   const active = params.get('isActive') ?? '';
@@ -67,11 +69,17 @@ export default function CommissionRulesPage() {
   };
 
   const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
-  const openEdit   = (r: CommissionRule) => {
-    const scopeId = (r.scope === 'manufacturer' ? r.manufacturerId : r.scope === 'product' ? r.productId : r.canteenId);
-    const id = typeof scopeId === 'object' && scopeId !== null ? scopeId._id : String(scopeId ?? '');
-    setForm({ scope: r.scope, scopeId: id, type: r.type, value: String(r.value), effectiveFrom: r.effectiveFrom.slice(0, 10), effectiveTo: r.effectiveTo?.slice(0, 10) ?? '', gstApplicable: r.gstApplicable ?? false, sacCode: r.sacCode ?? '', notes: '' });
-    setModal({ mode: 'edit', rule: r });
+  const openEdit = async (id: string) => {
+    setModal({ mode: 'edit', id });
+    setLoadingRecord(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: CommissionRule }>(`/api/v1/ops/commission-rules/${id}`);
+      const r = res.data;
+      const scopeRef = (r.scope === 'manufacturer' ? r.manufacturerId : r.scope === 'product' ? r.productId : r.canteenId);
+      const scopeId = typeof scopeRef === 'object' && scopeRef !== null ? scopeRef._id : String(scopeRef ?? '');
+      setForm({ scope: r.scope, scopeId, type: r.type, value: String(r.value), effectiveFrom: r.effectiveFrom.slice(0, 10), effectiveTo: r.effectiveTo?.slice(0, 10) ?? '', gstApplicable: r.gstApplicable ?? false, sacCode: r.sacCode ?? '', notes: '' });
+    } catch { toast.error('Failed to load commission rule details'); setModal(null); }
+    finally { setLoadingRecord(false); }
   };
 
   const handleSave = async () => {
@@ -82,7 +90,7 @@ export default function CommissionRulesPage() {
         await apiFetch('/api/v1/ops/commission-rules', { method: 'POST', body: JSON.stringify(body) });
         toast.success('Commission rule created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/commission-rules/${modal.rule._id}`, { method: 'PATCH', body: JSON.stringify({ value: Number(form.value), effectiveTo: form.effectiveTo || undefined, gstApplicable: form.gstApplicable, sacCode: form.sacCode || undefined }) });
+        await apiFetch(`/api/v1/ops/commission-rules/${modal.id}`, { method: 'PATCH', body: JSON.stringify({ value: Number(form.value), effectiveTo: form.effectiveTo || undefined, gstApplicable: form.gstApplicable, sacCode: form.sacCode || undefined }) });
         toast.success('Commission rule updated');
       }
       setModal(null);
@@ -152,7 +160,7 @@ export default function CommissionRulesPage() {
                     <td className="px-4 py-3"><StatusBadge status={r.isActive ? 'active' : 'inactive'} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(r._id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleStatus(r)}>{r.isActive ? 'Deactivate' : 'Activate'}</Button>
                       </div>
                     </td>
@@ -168,19 +176,29 @@ export default function CommissionRulesPage() {
       </div>
 
       <Dialog open={modal !== null} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Add Commission Rule' : 'Edit Commission Rule'} width="max-w-[520px]"
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
-        <div className="space-y-3">
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving || loadingRecord}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
+        {loadingRecord ? <div className="py-8 text-center text-sm text-gray-400">Loading…</div> : <div className="space-y-3">
           {modal?.mode === 'create' && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-sm font-medium text-gray-700 block mb-1">Scope *</label>
-                  <Select value={form.scope} onChange={e => setForm(p => ({ ...p, scope: e.target.value as CommScope }))} className="w-full">
+                  <Select value={form.scope} onChange={e => setForm(p => ({ ...p, scope: e.target.value as CommScope, scopeId: '' }))} className="w-full">
                     <option value="manufacturer">Manufacturer</option>
                     <option value="product">Product</option>
                     <option value="canteen">Canteen</option>
                   </Select></div>
-                <div><label className="text-sm font-medium text-gray-700 block mb-1">Scope Entity ID *</label>
-                  <Input value={form.scopeId} onChange={e => setForm(p => ({ ...p, scopeId: e.target.value }))} placeholder="MongoDB ObjectId" /></div>
+                <div><label className="text-sm font-medium text-gray-700 block mb-1">Entity *</label>
+                  {form.scope === 'manufacturer' ? (
+                    <EntityPicker endpoint="/api/v1/ops/manufacturers" value={form.scopeId}
+                      onChange={id => setForm(p => ({ ...p, scopeId: id }))} placeholder="Search manufacturers…" />
+                  ) : form.scope === 'product' ? (
+                    <EntityPicker endpoint="/api/v1/ops/products" value={form.scopeId}
+                      onChange={id => setForm(p => ({ ...p, scopeId: id }))} placeholder="Search products…" labelKey="name" subLabelKey="sku" />
+                  ) : (
+                    <EntityPicker endpoint="/api/v1/ops/canteens" value={form.scopeId}
+                      onChange={id => setForm(p => ({ ...p, scopeId: id }))} placeholder="Search canteens…" />
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-sm font-medium text-gray-700 block mb-1">Type *</label>
@@ -218,7 +236,7 @@ export default function CommissionRulesPage() {
               </label>
             </div>
           </div>
-        </div>
+        </div>}
       </Dialog>
     </AdminLayout>
   );

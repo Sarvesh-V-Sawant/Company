@@ -13,19 +13,20 @@ import StatusBadge from '@components/shared/StatusBadge';
 import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
+import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
 import { usePagination } from '@/hooks/usePagination';
 
 interface OpsAddress {
   _id: string; ownerType: 'canteen' | 'manufacturer' | 'company'; ownerId: string;
   label: string; addressType: 'shipTo' | 'billTo' | 'both';
-  line1: string; city: string; state: string; pincode: string;
-  isDefault: boolean; isActive: boolean;
+  line1: string; line2?: string; city: string; state: string; stateCode?: string; pincode: string;
+  gstin?: string; isDefault: boolean; isActive: boolean;
 }
 interface ApiResp { success: boolean; data: OpsAddress[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 let _debounce: ReturnType<typeof setTimeout> | null = null;
-type ModalState = null | { mode: 'create' } | { mode: 'edit'; address: OpsAddress };
+type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 const emptyForm = { ownerType: 'canteen' as OpsAddress['ownerType'], ownerId: '', label: '', addressType: 'shipTo' as OpsAddress['addressType'], line1: '', line2: '', city: '', state: '', stateCode: '', pincode: '', gstin: '', isDefault: false };
 
 export default function AddressesPage() {
@@ -35,6 +36,7 @@ export default function AddressesPage() {
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const search     = params.get('search') ?? '';
   const ownerType  = params.get('ownerType') ?? '';
@@ -53,9 +55,15 @@ export default function AddressesPage() {
   };
 
   const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
-  const openEdit   = (a: OpsAddress) => {
-    setForm({ ownerType: a.ownerType, ownerId: a.ownerId, label: a.label, addressType: a.addressType, line1: a.line1, line2: '', city: a.city, state: a.state, stateCode: '', pincode: a.pincode, gstin: '', isDefault: a.isDefault });
-    setModal({ mode: 'edit', address: a });
+  const openEdit = async (id: string) => {
+    setModal({ mode: 'edit', id });
+    setLoadingRecord(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: OpsAddress }>(`/api/v1/ops/addresses/${id}`);
+      const a = res.data;
+      setForm({ ownerType: a.ownerType, ownerId: a.ownerId, label: a.label, addressType: a.addressType, line1: a.line1, line2: a.line2 ?? '', city: a.city, state: a.state, stateCode: a.stateCode ?? '', pincode: a.pincode, gstin: a.gstin ?? '', isDefault: a.isDefault });
+    } catch { toast.error('Failed to load address details'); setModal(null); }
+    finally { setLoadingRecord(false); }
   };
 
   const handleSave = async () => {
@@ -67,7 +75,7 @@ export default function AddressesPage() {
         toast.success('Address created');
       } else if (modal?.mode === 'edit') {
         const { ownerType: _ot, ownerId: _oid, ...updateBody } = body;
-        await apiFetch(`/api/v1/ops/addresses/${modal.address._id}`, { method: 'PATCH', body: JSON.stringify(updateBody) });
+        await apiFetch(`/api/v1/ops/addresses/${modal.id}`, { method: 'PATCH', body: JSON.stringify(updateBody) });
         toast.success('Address updated');
       }
       setModal(null);
@@ -139,7 +147,7 @@ export default function AddressesPage() {
                     <td className="px-4 py-3"><StatusBadge status={a.isActive ? 'active' : 'inactive'} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(a)}>Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(a._id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleStatus(a)}>{a.isActive ? 'Deactivate' : 'Activate'}</Button>
                       </div>
                     </td>
@@ -155,19 +163,26 @@ export default function AddressesPage() {
       </div>
 
       <Dialog open={modal !== null} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Add Address' : 'Edit Address'} width="max-w-[560px]"
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
-        <div className="space-y-3">
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving || loadingRecord}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
+        {loadingRecord ? <div className="py-8 text-center text-sm text-gray-400">Loading…</div> : <div className="space-y-3">
           {modal?.mode === 'create' && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner Type *</label>
-                  <Select value={form.ownerType} onChange={e => setForm(p => ({ ...p, ownerType: e.target.value as OpsAddress['ownerType'] }))} className="w-full">
-                    <option value="canteen">Canteen</option>
-                    <option value="manufacturer">Manufacturer</option>
-                    <option value="company">Company</option>
-                  </Select></div>
-                <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner ID *</label>
-                  <Input value={form.ownerId} onChange={e => setForm(p => ({ ...p, ownerId: e.target.value }))} placeholder="MongoDB ObjectId" /></div>
+              <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner Type *</label>
+                <Select value={form.ownerType} onChange={e => setForm(p => ({ ...p, ownerType: e.target.value as OpsAddress['ownerType'], ownerId: '' }))} className="w-full">
+                  <option value="canteen">Canteen</option>
+                  <option value="manufacturer">Manufacturer</option>
+                  <option value="company">Company</option>
+                </Select></div>
+              <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner *</label>
+                {form.ownerType === 'canteen' ? (
+                  <EntityPicker endpoint="/api/v1/ops/canteens" value={form.ownerId}
+                    onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search canteens…" />
+                ) : form.ownerType === 'manufacturer' ? (
+                  <EntityPicker endpoint="/api/v1/ops/manufacturers" value={form.ownerId}
+                    onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search manufacturers…" />
+                ) : (
+                  <Input value={form.ownerId} onChange={e => setForm(p => ({ ...p, ownerId: e.target.value }))} placeholder="Company owner ID" />
+                )}
               </div>
             </>
           )}
@@ -203,7 +218,7 @@ export default function AddressesPage() {
             <input type="checkbox" checked={form.isDefault} onChange={e => setForm(p => ({ ...p, isDefault: e.target.checked }))} className="rounded" />
             Set as default for this owner + type
           </label>
-        </div>
+        </div>}
       </Dialog>
     </AdminLayout>
   );

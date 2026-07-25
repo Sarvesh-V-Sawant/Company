@@ -23,7 +23,7 @@ interface Manufacturer {
 interface ApiResp { success: boolean; data: Manufacturer[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 let _debounce: ReturnType<typeof setTimeout> | null = null;
-type ModalState = null | { mode: 'create' } | { mode: 'edit'; mfr: Manufacturer };
+type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 const emptyForm = { code: '', name: '', gstin: '', primaryEmail: '', contactPerson: '', phone: '' };
 
 export default function ManufacturersPage() {
@@ -33,6 +33,7 @@ export default function ManufacturersPage() {
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const search = params.get('search') ?? '';
   const active = params.get('isActive') ?? '';
@@ -50,9 +51,15 @@ export default function ManufacturersPage() {
   };
 
   const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
-  const openEdit   = (m: Manufacturer) => {
-    setForm({ code: m.code, name: m.name, gstin: m.gstin ?? '', primaryEmail: m.primaryEmail, contactPerson: m.contactPerson ?? '', phone: m.phone ?? '' });
-    setModal({ mode: 'edit', mfr: m });
+  const openEdit = async (id: string) => {
+    setModal({ mode: 'edit', id });
+    setLoadingRecord(true);
+    try {
+      const res = await apiFetch<{ success: boolean; data: Manufacturer }>(`/api/v1/ops/manufacturers/${id}`);
+      const m = res.data;
+      setForm({ code: m.code, name: m.name, gstin: m.gstin ?? '', primaryEmail: m.primaryEmail, contactPerson: m.contactPerson ?? '', phone: m.phone ?? '' });
+    } catch { toast.error('Failed to load manufacturer details'); setModal(null); }
+    finally { setLoadingRecord(false); }
   };
 
   const handleSave = async () => {
@@ -62,7 +69,7 @@ export default function ManufacturersPage() {
         await apiFetch('/api/v1/ops/manufacturers', { method: 'POST', body: JSON.stringify({ ...form, gstin: form.gstin || undefined }) });
         toast.success('Manufacturer created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/manufacturers/${modal.mfr._id}`, { method: 'PATCH', body: JSON.stringify({ name: form.name, gstin: form.gstin || undefined, primaryEmail: form.primaryEmail, contactPerson: form.contactPerson || undefined, phone: form.phone || undefined }) });
+        await apiFetch(`/api/v1/ops/manufacturers/${modal.id}`, { method: 'PATCH', body: JSON.stringify({ name: form.name, gstin: form.gstin || undefined, primaryEmail: form.primaryEmail, contactPerson: form.contactPerson || undefined, phone: form.phone || undefined }) });
         toast.success('Manufacturer updated');
       }
       setModal(null);
@@ -127,7 +134,7 @@ export default function ManufacturersPage() {
                     <td className="px-4 py-3"><StatusBadge status={m.isActive ? 'active' : 'inactive'} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>Edit</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(m._id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleStatus(m)}>{m.isActive ? 'Deactivate' : 'Activate'}</Button>
                       </div>
                     </td>
@@ -143,8 +150,8 @@ export default function ManufacturersPage() {
       </div>
 
       <Dialog open={modal !== null} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Add Manufacturer' : 'Edit Manufacturer'}
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
-        <div className="space-y-3">
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setModal(null)}>Cancel</Button><Button onClick={handleSave} disabled={saving || loadingRecord}>{saving ? 'Saving…' : 'Save'}</Button></div>}>
+        {loadingRecord ? <div className="py-8 text-center text-sm text-gray-400">Loading…</div> : <div className="space-y-3">
           {modal?.mode === 'create' && (
             <div><label className="text-sm font-medium text-gray-700 block mb-1">Code *</label>
               <Input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. MFR001" /></div>
@@ -159,7 +166,7 @@ export default function ManufacturersPage() {
             <Input value={form.contactPerson} onChange={e => setForm(p => ({ ...p, contactPerson: e.target.value }))} /></div>
           <div><label className="text-sm font-medium text-gray-700 block mb-1">Phone</label>
             <Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
-        </div>
+        </div>}
       </Dialog>
     </AdminLayout>
   );

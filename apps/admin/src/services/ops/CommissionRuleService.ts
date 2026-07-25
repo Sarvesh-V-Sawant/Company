@@ -5,6 +5,28 @@ import { CommissionRule, type ICommissionRule } from '@models/ops/CommissionRule
 import { AuditLog } from '@models/AuditLog';
 import { calcSkip } from '@lib/utils/pagination';
 
+/** OPS_023: active commission rule with overlapping window exists for the same scope key */
+async function assertNoCommissionOverlap(
+  scope: 'manufacturer' | 'product' | 'canteen',
+  scopeId: mongoose.Types.ObjectId,
+  effectiveFrom: Date,
+  effectiveTo: Date | undefined,
+  excludeId?: mongoose.Types.ObjectId,
+) {
+  const scopeField = scope === 'manufacturer' ? 'manufacturerId' : scope === 'product' ? 'productId' : 'canteenId';
+  const overlapCondition = {
+    effectiveFrom: { $lte: effectiveTo ?? new Date('9999-12-31') },
+    $or: [{ effectiveTo: null }, { effectiveTo: { $gte: effectiveFrom } }],
+  };
+  const q: Record<string, unknown> = { scope, [scopeField]: scopeId, isActive: true, ...overlapCondition };
+  if (excludeId) q._id = { $ne: excludeId };
+
+  const conflict = await CommissionRule.findOne(q).lean();
+  if (conflict) {
+    throw new AppError('OPS_023', 409, 'An active commission rule with an overlapping effective date window already exists for this scope.');
+  }
+}
+
 export class CommissionRuleService {
   static async list(params: {
     page: number; limit: number; search?: string;
@@ -49,6 +71,13 @@ export class CommissionRuleService {
     gstApplicable?: boolean; sacCode?: string; notes?: string;
   }, actorId: string) {
     await connectDB();
+    const scopeField = data.scope === 'manufacturer' ? data.manufacturerId : data.scope === 'product' ? data.productId : data.canteenId;
+    const scopeOid = new mongoose.Types.ObjectId(scopeField);
+    const from = new Date(data.effectiveFrom);
+    const to   = data.effectiveTo ? new Date(data.effectiveTo) : undefined;
+
+    await assertNoCommissionOverlap(data.scope, scopeOid, from, to);
+
     const actorOid = new mongoose.Types.ObjectId(actorId);
     const r = await CommissionRule.create({
       scope: data.scope,
@@ -57,8 +86,8 @@ export class CommissionRuleService {
       canteenId: data.canteenId ? new mongoose.Types.ObjectId(data.canteenId) : undefined,
       type: data.type,
       value: data.value,
-      effectiveFrom: new Date(data.effectiveFrom),
-      effectiveTo: data.effectiveTo ? new Date(data.effectiveTo) : undefined,
+      effectiveFrom: from,
+      effectiveTo: to,
       gstApplicable: data.gstApplicable,
       sacCode: data.sacCode,
       notes: data.notes,
@@ -76,8 +105,16 @@ export class CommissionRuleService {
     if (!r) throw new AppError('OPS_017', 404, 'Commission rule not found.');
     const actorOid = new mongoose.Types.ObjectId(actorId);
     const before = r.toObject();
+
+    if (data.effectiveTo !== undefined) {
+      const newTo = data.effectiveTo ? new Date(data.effectiveTo) : undefined;
+      const scopeField = r.scope === 'manufacturer' ? r.manufacturerId : r.scope === 'product' ? r.productId : r.canteenId;
+      if (scopeField) {
+        await assertNoCommissionOverlap(r.scope, scopeField as mongoose.Types.ObjectId, r.effectiveFrom, newTo, r._id as mongoose.Types.ObjectId);
+      }
+      r.effectiveTo = newTo;
+    }
     if (data.value !== undefined) r.value = data.value;
-    if (data.effectiveTo !== undefined) r.effectiveTo = data.effectiveTo ? new Date(data.effectiveTo) : undefined;
     if (data.gstApplicable !== undefined) r.gstApplicable = data.gstApplicable;
     if (data.sacCode !== undefined) r.sacCode = data.sacCode;
     if (data.notes !== undefined) r.notes = data.notes;
