@@ -23,7 +23,7 @@ export const CreateEmployeeSchema = z.object({
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
   email: z.string().email().max(255),
-  role: z.enum(['admin', 'employee']).default('employee'),
+  role: z.enum(['admin', 'employee', 'super_admin', 'manager', 'executive']).default('employee'),
   phone: z.string().regex(E164_REGEX, 'Must be E.164 format (+countrycode...)').optional(),
   department: z.string().max(100).optional(),
   designation: z.string().max(100).optional(),

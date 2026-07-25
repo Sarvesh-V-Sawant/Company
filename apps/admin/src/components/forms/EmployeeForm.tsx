@@ -23,7 +23,7 @@ const createSchema = z.object({
   firstName:            z.string().min(1, 'Required').max(50),
   lastName:             z.string().min(1, 'Required').max(50),
   email:                z.string().email('Invalid email').max(255),
-  role:                 z.enum(['admin', 'employee']),
+  role:                 z.enum(['admin', 'employee', 'super_admin', 'manager', 'executive']),
   phone:                z.string().optional(),
   department:           z.string().max(100).optional(),
   designation:          z.string().max(100).optional(),
@@ -202,7 +202,10 @@ function CreateEmployeeForm({ onSuccess }: { onSuccess: () => void }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
         <Select {...register('role')} error={!!errors.role}>
           <option value="employee">Employee</option>
-          <option value="admin">Admin</option>
+          <option value="executive">Executive (Work Desk)</option>
+          <option value="manager">Manager (Work Desk)</option>
+          <option value="admin">Admin (Attendance + Work Desk)</option>
+          <option value="super_admin">Super Admin</option>
         </Select>
       </div>
 

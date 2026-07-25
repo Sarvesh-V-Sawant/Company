@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import type { UserRole } from '@app-types/enums';
 import { randomBytes, createHash } from 'crypto';
 import mongoose from 'mongoose';
 import { connectDB } from '@lib/db/connect';
@@ -176,7 +177,7 @@ export class EmployeeService {
       sortBy: string;
       sortOrder: 'asc' | 'desc';
     },
-    requesterRole: 'admin' | 'employee',
+    requesterRole: UserRole,
   ) {
     if (requesterRole !== 'admin') throw new AppError('AUTH_006', 403, 'Forbidden.');
 
@@ -219,7 +220,7 @@ export class EmployeeService {
       firstName: string;
       lastName: string;
       email: string;
-      role: 'admin' | 'employee';
+      role: UserRole;
       phone?: string;
       department?: string;
       designation?: string;
@@ -374,7 +375,7 @@ export class EmployeeService {
     return { emailSent: true };
   }
 
-  static async getById(id: string, requesterRole: 'admin' | 'employee') {
+  static async getById(id: string, requesterRole: UserRole) {
     if (requesterRole !== 'admin') throw new AppError('AUTH_006', 403, 'Forbidden.');
     assertValidObjectId(id);
     await connectDB();

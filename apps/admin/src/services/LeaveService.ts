@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import type { UserRole } from '@app-types/enums';
 import { connectDB } from '@lib/db/connect';
 import { getLeaveYearBoundaries, dateRange, weekdayOf } from '@lib/utils/leaveUtils';
 import { AppError } from '@services/AuthService';
@@ -190,7 +191,7 @@ export class LeaveService {
 
   // ─── List ───────────────────────────────────────────────────────────────────
 
-  static async list(params: { actorId: string; role: 'admin' | 'employee' } & LeaveListQuery) {
+  static async list(params: { actorId: string; role: UserRole } & LeaveListQuery) {
     await connectDB();
 
     const filter: Record<string, unknown> = {};
@@ -237,7 +238,7 @@ export class LeaveService {
 
   // ─── Get by ID ──────────────────────────────────────────────────────────────
 
-  static async getById(leaveId: string, actorId: string, role: 'admin' | 'employee') {
+  static async getById(leaveId: string, actorId: string, role: UserRole) {
     await connectDB();
 
     const leave = await Leave.findById(leaveId).lean() as (ILeave & { _id: mongoose.Types.ObjectId }) | null;
@@ -727,7 +728,7 @@ export class LeaveService {
 
   // ─── Balance ─────────────────────────────────────────────────────────────────
 
-  static async getBalance(actorId: string, role: 'admin' | 'employee', employeeId?: string) {
+  static async getBalance(actorId: string, role: UserRole, employeeId?: string) {
     await connectDB();
 
     const targetId = (role === 'admin' && employeeId) ? employeeId : actorId;

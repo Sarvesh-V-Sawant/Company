@@ -1,6 +1,8 @@
+import type { UserRole } from './enums';
+
 export interface JwtPayload {
   userId: string;
-  role: 'admin' | 'employee';
+  role: UserRole;
   requiresPasswordChange: boolean;
   iat: number;
   exp: number;

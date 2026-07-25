@@ -21,7 +21,7 @@ export type RegularizationType =
 
 export type PayrollStatus = 'draft' | 'finalised';
 
-export type UserRole = 'admin' | 'employee';
+export type UserRole = 'admin' | 'employee' | 'super_admin' | 'manager' | 'executive';
 
 export type WeekDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
