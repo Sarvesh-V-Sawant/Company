@@ -173,17 +173,17 @@ export default function AddressesPage() {
                   <option value="manufacturer">Manufacturer</option>
                   <option value="company">Company</option>
                 </Select></div>
-              <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner *</label>
-                {form.ownerType === 'canteen' ? (
-                  <EntityPicker endpoint="/api/v1/ops/canteens" value={form.ownerId}
-                    onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search canteens…" />
-                ) : form.ownerType === 'manufacturer' ? (
-                  <EntityPicker endpoint="/api/v1/ops/manufacturers" value={form.ownerId}
-                    onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search manufacturers…" />
-                ) : (
-                  <Input value={form.ownerId} onChange={e => setForm(p => ({ ...p, ownerId: e.target.value }))} placeholder="Company owner ID" />
-                )}
-              </div>
+              {form.ownerType !== 'company' && (
+                <div><label className="text-sm font-medium text-gray-700 block mb-1">Owner *</label>
+                  {form.ownerType === 'canteen' ? (
+                    <EntityPicker endpoint="/api/v1/ops/canteens" value={form.ownerId}
+                      onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search canteens…" />
+                  ) : (
+                    <EntityPicker endpoint="/api/v1/ops/manufacturers" value={form.ownerId}
+                      onChange={id => setForm(p => ({ ...p, ownerId: id }))} placeholder="Search manufacturers…" />
+                  )}
+                </div>
+              )}
             </>
           )}
           <div className="grid grid-cols-2 gap-3">

@@ -31,8 +31,8 @@ interface PriceListFull extends Omit<PriceList, 'items'> {
 interface ApiResp { success: boolean; data: PriceList[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
-type LineItem = { productId: string; rate: string };
-const emptyLine = (): LineItem => ({ productId: '', rate: '' });
+type LineItem = { productId: string; rate: string; label: string };
+const emptyLine = (): LineItem => ({ productId: '', rate: '', label: '' });
 
 const emptyForm = { manufacturerId: '', canteenId: '', effectiveFrom: '', effectiveTo: '' };
 
@@ -86,10 +86,12 @@ export default function PriceListsPage() {
         effectiveTo: pl.effectiveTo?.slice(0, 10) ?? '',
       });
       setLines(pl.items.length > 0
-        ? pl.items.map(i => ({
-            productId: typeof i.productId === 'object' ? i.productId._id : String(i.productId),
-            rate: String(i.rate),
-          }))
+        ? pl.items.map(i => {
+            if (typeof i.productId === 'object') {
+              return { productId: i.productId._id, rate: String(i.rate), label: `${i.productId.sku} — ${i.productId.name}` };
+            }
+            return { productId: String(i.productId), rate: String(i.rate), label: '' };
+          })
         : [emptyLine()]);
     } catch { toast.error('Failed to load price list details'); setModal(null); }
     finally { setLoadingRecord(false); }
@@ -101,8 +103,20 @@ export default function PriceListsPage() {
     setLines(l => l.map((ln, idx) => idx === i ? { ...ln, [field]: val } : ln));
 
   const handleSave = async () => {
-    const priceItems = lines.filter(l => l.productId && l.rate !== '').map(l => ({ productId: l.productId, rate: Number(l.rate) }));
-    if (!priceItems.length) { toast.error('Add at least one line item'); return; }
+    const filled = lines.filter(l => l.productId);
+    if (!filled.length) { toast.error('Add at least one line item'); return; }
+    const badRate = filled.find(l => l.rate === '' || isNaN(Number(l.rate)) || !isFinite(Number(l.rate)) || Number(l.rate) < 0);
+    if (badRate) { toast.error('Enter a valid rate for every line'); return; }
+    const seen = new Map<string, string>();
+    for (const ln of filled) {
+      if (seen.has(ln.productId)) {
+        const sku = ln.label ? ln.label.split(' — ')[0] : ln.productId;
+        toast.error(`${sku} appears more than once`);
+        return;
+      }
+      seen.set(ln.productId, ln.label);
+    }
+    const priceItems = filled.map(l => ({ productId: l.productId, rate: Number(l.rate) }));
     setSaving(true);
     try {
       const body = { effectiveFrom: form.effectiveFrom, effectiveTo: form.effectiveTo || undefined, items: priceItems };
@@ -217,7 +231,9 @@ export default function PriceListsPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Line Items *</label>
+                <label className="text-sm font-medium text-gray-700">
+                  Line Items * <span className="text-gray-400 font-normal">({lines.length} line{lines.length !== 1 ? 's' : ''})</span>
+                </label>
                 <Button variant="ghost" size="sm" onClick={addLine}><Plus className="h-3.5 w-3.5 mr-1" />Add Line</Button>
               </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -228,7 +244,7 @@ export default function PriceListsPage() {
                   <div key={i} className="grid grid-cols-[1fr_100px_32px] items-center gap-0 border-b border-gray-100 last:border-0 px-2 py-1.5">
                     <div className="pr-2">
                       <EntityPicker endpoint="/api/v1/ops/products" value={ln.productId}
-                        onChange={id => setLine(i, 'productId', id)}
+                        onChange={(id, lbl) => setLines(l => l.map((ln2, idx) => idx === i ? { ...ln2, productId: id, label: lbl ?? '' } : ln2))}
                         placeholder="Search products…" labelKey="name" subLabelKey="sku" allowClear={false} />
                     </div>
                     <Input type="number" value={ln.rate} onChange={e => setLine(i, 'rate', e.target.value)}
