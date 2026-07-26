@@ -5,7 +5,7 @@ const PINCODE_REGEX = /^\d{6}$/;
 
 export const CreateAddressSchema = z.object({
   ownerType:   z.enum(['canteen', 'manufacturer', 'company']),
-  ownerId:     MongoIdSchema,
+  ownerId:     MongoIdSchema.optional(),
   label:       z.string().min(1).max(100),
   addressType: z.enum(['shipTo', 'billTo', 'both']),
   line1:       z.string().min(1).max(200),
@@ -16,7 +16,10 @@ export const CreateAddressSchema = z.object({
   pincode:     z.string().regex(PINCODE_REGEX, 'Pincode must be 6 digits'),
   gstin:       GstinSchema,
   isDefault:   z.boolean().default(false),
-});
+}).refine(
+  (d) => d.ownerType === 'company' || !!d.ownerId,
+  { message: 'ownerId is required for canteen and manufacturer addresses', path: ['ownerId'] },
+);
 
 export const UpdateAddressSchema = z.object({
   label:       z.string().min(1).max(100).optional(),

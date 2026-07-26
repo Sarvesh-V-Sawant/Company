@@ -44,16 +44,16 @@ export class AddressService {
   }
 
   static async create(data: {
-    ownerType: 'canteen' | 'manufacturer' | 'company'; ownerId: string; label: string;
+    ownerType: 'canteen' | 'manufacturer' | 'company'; ownerId?: string; label: string;
     addressType: 'shipTo' | 'billTo' | 'both'; line1: string; line2?: string;
     city: string; state: string; stateCode: string; pincode: string; gstin?: string; isDefault?: boolean;
   }, actorId: string) {
     await connectDB();
     assertGstin(data.gstin);
     const actorOid = new mongoose.Types.ObjectId(actorId);
-    const ownerOid = new mongoose.Types.ObjectId(data.ownerId);
+    const ownerOid = data.ownerId ? new mongoose.Types.ObjectId(data.ownerId) : undefined;
 
-    if (data.isDefault) {
+    if (data.isDefault && ownerOid) {
       // Atomically unset isDefault on all other addresses for the same owner + addressType
       await OpsAddress.updateMany(
         { ownerType: data.ownerType, ownerId: ownerOid, addressType: data.addressType, isDefault: true },
@@ -61,9 +61,10 @@ export class AddressService {
       );
     }
 
+    const { ownerId: _raw, ...rest } = data;
     const a = await OpsAddress.create({
-      ...data,
-      ownerId: ownerOid,
+      ...rest,
+      ...(ownerOid ? { ownerId: ownerOid } : {}),
       isDefault: data.isDefault ?? false,
       createdBy: actorOid,
       updatedBy: actorOid,

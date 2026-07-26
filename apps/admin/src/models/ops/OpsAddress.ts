@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IOpsAddress extends Document {
   ownerType: 'canteen' | 'manufacturer' | 'company';
-  ownerId: mongoose.Types.ObjectId;
+  ownerId?: mongoose.Types.ObjectId;
   label: string;
   addressType: 'shipTo' | 'billTo' | 'both';
   line1: string;
@@ -23,7 +23,7 @@ export interface IOpsAddress extends Document {
 const OpsAddressSchema = new Schema<IOpsAddress>(
   {
     ownerType:   { type: String, enum: ['canteen', 'manufacturer', 'company'], required: true },
-    ownerId:     { type: Schema.Types.ObjectId, required: true },
+    ownerId:     { type: Schema.Types.ObjectId, required: function(this: IOpsAddress) { return this.ownerType !== 'company'; } },
     label:       { type: String, required: true },
     addressType: { type: String, enum: ['shipTo', 'billTo', 'both'], required: true },
     line1:       { type: String, required: true },
