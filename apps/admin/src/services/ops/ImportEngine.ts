@@ -1,11 +1,18 @@
 /**
- * Excel import engine skeleton.
- * Uses exceljs (already in deps). Each entity type will extend this in later phases.
+ * Excel import engine — parse, preview, commit.
+ * Commit implements all-or-nothing upsert: all relation references are resolved
+ * before any writes. If any row fails resolution, the whole batch is rejected
+ * and no records are written (Atlas M0 does not support multi-doc transactions;
+ * this two-phase approach gives equivalent safety for import batches).
  */
 import type ExcelJS from 'exceljs';
 import mongoose from 'mongoose';
 import { connectDB } from '@lib/db/connect';
 import { ImportBatch, type ImportEntityType } from '@models/ops/ImportBatch';
+import { Canteen } from '@models/ops/Canteen';
+import { Manufacturer } from '@models/ops/Manufacturer';
+import { Product } from '@models/ops/Product';
+import { AppError } from '@services/AuthService';
 
 export interface RowError {
   rowNumber: number;
@@ -30,6 +37,15 @@ export interface PreviewResult {
   columnMapping: Record<string, string>;
 }
 
+export interface CommitResult {
+  batchId: string;
+  status: 'committed';
+  createdCount: number;
+  updatedCount: number;
+}
+
+// ─── Parse & preview ─────────────────────────────────────────────────────────
+
 export async function parseExcelBuffer(
   buffer: Uint8Array,
   entityType: ImportEntityType,
@@ -40,7 +56,6 @@ export async function parseExcelBuffer(
 ): Promise<PreviewResult> {
   const ExcelJSLib = (await import('exceljs')).default;
   const wb = new ExcelJSLib.Workbook();
-  // exceljs accepts ArrayBuffer; cast through unknown to satisfy version-sensitive Buffer generic
   await (wb.xlsx as unknown as { load(b: Uint8Array): Promise<void> }).load(buffer);
   const ws = wb.worksheets[0];
 
@@ -54,7 +69,7 @@ export async function parseExcelBuffer(
 
   const rows: ParsedRow[] = [];
   ws.eachRow((row: ExcelJS.Row, rowNumber: number) => {
-    if (rowNumber === 1) return; // skip header
+    if (rowNumber === 1) return;
 
     const data: Record<string, unknown> = {};
     row.eachCell({ includeEmpty: true }, (cell: ExcelJS.Cell, colNumber: number) => {
@@ -81,8 +96,13 @@ export async function parseExcelBuffer(
     validRows,
     errorRows,
     importedRows: 0,
+    createdCount: 0,
+    updatedCount: 0,
     status: 'previewed',
     rowErrors: rows.flatMap((r) => r.errors),
+    // Store only valid rows — errors are already captured in rowErrors above.
+    // Storing data only (not errors) keeps the document lean and avoids redundancy.
+    rows: rows.map((r) => ({ rowNumber: r.rowNumber, data: r.data })),
     createdBy: new mongoose.Types.ObjectId(uploadedBy),
   });
 
@@ -98,20 +118,216 @@ export async function parseExcelBuffer(
   };
 }
 
-export async function commitBatch(
-  batchId: string,
-  commitFn: (rows: ParsedRow[]) => Promise<number>,
-  rows: ParsedRow[],
-): Promise<void> {
-  const importedRows = await commitFn(rows.filter((r) => r.errors.length === 0));
+// ─── Commit ──────────────────────────────────────────────────────────────────
+
+export async function commitBatch(batchId: string, actorId: string): Promise<CommitResult> {
   await connectDB();
+
+  const batch = await ImportBatch.findById(batchId);
+  if (!batch) throw new AppError('OPS_019', 404, 'Import batch not found.');
+  if (batch.status !== 'previewed')
+    throw new AppError('OPS_020', 409, `Batch status is "${batch.status}" — only "previewed" batches can be committed.`);
+  if (batch.errorRows > 0)
+    throw new AppError('OPS_021', 422, `Batch has ${batch.errorRows} row error(s). Fix the file and re-upload before committing.`);
+
+  const storedRows = (batch.rows ?? []) as Array<{ rowNumber: number; data: Record<string, unknown> }>;
+  const validRows: ParsedRow[] = storedRows.map((r) => ({ rowNumber: r.rowNumber, data: r.data, errors: [] }));
+
+  const actorOid = new mongoose.Types.ObjectId(actorId);
+
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  if (batch.entityType === 'CANTEEN') {
+    ({ createdCount, updatedCount } = await upsertCanteens(validRows, actorOid));
+  } else if (batch.entityType === 'MANUFACTURER') {
+    ({ createdCount, updatedCount } = await upsertManufacturers(validRows, actorOid));
+  } else if (batch.entityType === 'PRODUCT') {
+    ({ createdCount, updatedCount } = await upsertProducts(validRows, actorOid));
+  } else {
+    throw new AppError('OPS_018', 422, `Commit not yet implemented for entity type "${batch.entityType}".`);
+  }
+
   await ImportBatch.findByIdAndUpdate(batchId, {
     status: 'committed',
-    importedRows,
+    importedRows: createdCount + updatedCount,
+    createdCount,
+    updatedCount,
   });
+
+  return { batchId, status: 'committed', createdCount, updatedCount };
 }
 
 export async function discardBatch(batchId: string): Promise<void> {
   await connectDB();
   await ImportBatch.findByIdAndUpdate(batchId, { status: 'discarded' });
+}
+
+// ─── Entity upsert helpers ────────────────────────────────────────────────────
+
+function str(v: unknown): string {
+  return String(v ?? '').trim();
+}
+
+function strOpt(v: unknown): string | undefined {
+  const s = str(v);
+  return s || undefined;
+}
+
+function numOpt(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+async function upsertCanteens(
+  rows: ParsedRow[],
+  actorOid: mongoose.Types.ObjectId,
+): Promise<{ createdCount: number; updatedCount: number }> {
+  // Phase 1: resolve all parentCanteenCode references before writing anything.
+  const parentCodeCache = new Map<string, mongoose.Types.ObjectId>();
+  const relationErrors: string[] = [];
+
+  for (const row of rows) {
+    const rawParent = strOpt(row.data.parentCanteenCode);
+    if (!rawParent) continue;
+    const parentCodeUpper = rawParent.toUpperCase();
+    if (parentCodeCache.has(parentCodeUpper)) continue;
+
+    const parent = await Canteen.findOne({ code: parentCodeUpper, type: 'main' }).select('_id').lean<{ _id: mongoose.Types.ObjectId }>();
+    if (!parent) {
+      relationErrors.push(`Row ${row.rowNumber}: ParentCanteenCode "${rawParent}" not found or is not a main canteen`);
+    } else {
+      parentCodeCache.set(parentCodeUpper, parent._id);
+    }
+  }
+
+  if (relationErrors.length > 0) {
+    throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
+  }
+
+  // Phase 2: upsert all rows.
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const row of rows) {
+    const codeUpper = str(row.data.code).toUpperCase();
+    const type = str(row.data.type).toLowerCase() as 'main' | 'subsidiary';
+    const rawParent = strOpt(row.data.parentCanteenCode);
+    const parentCanteenId = rawParent ? parentCodeCache.get(rawParent.toUpperCase()) : undefined;
+
+    const fields: Record<string, unknown> = {
+      name: str(row.data.name),
+      type,
+      updatedBy: actorOid,
+    };
+    if (parentCanteenId) fields.parentCanteenId = parentCanteenId;
+    if (strOpt(row.data.gstin)) fields.gstin = str(row.data.gstin).toUpperCase();
+    if (strOpt(row.data.contactPerson)) fields.contactPerson = str(row.data.contactPerson);
+    if (strOpt(row.data.phone)) fields.phone = str(row.data.phone);
+    if (strOpt(row.data.email)) fields.email = str(row.data.email).toLowerCase();
+
+    const existing = await Canteen.findOne({ code: codeUpper }).lean<{ _id: mongoose.Types.ObjectId }>();
+    if (existing) {
+      await Canteen.findByIdAndUpdate(existing._id, { $set: fields });
+      updatedCount++;
+    } else {
+      await Canteen.create({ ...fields, code: codeUpper, isActive: true, createdBy: actorOid });
+      createdCount++;
+    }
+  }
+
+  return { createdCount, updatedCount };
+}
+
+async function upsertManufacturers(
+  rows: ParsedRow[],
+  actorOid: mongoose.Types.ObjectId,
+): Promise<{ createdCount: number; updatedCount: number }> {
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const row of rows) {
+    const codeUpper = str(row.data.code).toUpperCase();
+
+    const fields: Record<string, unknown> = {
+      name: str(row.data.name),
+      primaryEmail: str(row.data.primaryEmail).toLowerCase(),
+      updatedBy: actorOid,
+    };
+    if (strOpt(row.data.gstin)) fields.gstin = str(row.data.gstin).toUpperCase();
+    if (strOpt(row.data.contactPerson)) fields.contactPerson = str(row.data.contactPerson);
+    if (strOpt(row.data.phone)) fields.phone = str(row.data.phone);
+
+    const existing = await Manufacturer.findOne({ code: codeUpper }).lean<{ _id: mongoose.Types.ObjectId }>();
+    if (existing) {
+      await Manufacturer.findByIdAndUpdate(existing._id, { $set: fields });
+      updatedCount++;
+    } else {
+      await Manufacturer.create({ ...fields, code: codeUpper, isActive: true, createdBy: actorOid });
+      createdCount++;
+    }
+  }
+
+  return { createdCount, updatedCount };
+}
+
+async function upsertProducts(
+  rows: ParsedRow[],
+  actorOid: mongoose.Types.ObjectId,
+): Promise<{ createdCount: number; updatedCount: number }> {
+  // Phase 1: resolve all manufacturerCode references.
+  const mfrCodeCache = new Map<string, mongoose.Types.ObjectId>();
+  const relationErrors: string[] = [];
+
+  for (const row of rows) {
+    const rawCode = str(row.data.manufacturerCode);
+    if (!rawCode) continue;
+    const codeUpper = rawCode.toUpperCase();
+    if (mfrCodeCache.has(codeUpper)) continue;
+
+    const mfr = await Manufacturer.findOne({ code: codeUpper, isActive: true }).select('_id').lean<{ _id: mongoose.Types.ObjectId }>();
+    if (!mfr) {
+      relationErrors.push(`Row ${row.rowNumber}: ManufacturerCode "${rawCode}" not found or is inactive (OPS_013/OPS_014 semantics)`);
+    } else {
+      mfrCodeCache.set(codeUpper, mfr._id);
+    }
+  }
+
+  if (relationErrors.length > 0) {
+    throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
+  }
+
+  // Phase 2: upsert all rows.
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const row of rows) {
+    const skuUpper = str(row.data.sku).toUpperCase();
+    const mfrCodeUpper = str(row.data.manufacturerCode).toUpperCase();
+    const manufacturerId = mfrCodeCache.get(mfrCodeUpper)!;
+
+    const fields: Record<string, unknown> = {
+      name: str(row.data.name),
+      manufacturerId,
+      uom: str(row.data.uom).toUpperCase(),
+      updatedBy: actorOid,
+    };
+    const packSize = numOpt(row.data.packSize);
+    if (packSize !== undefined) fields.packSize = packSize;
+    if (strOpt(row.data.hsnCode)) fields.hsnCode = str(row.data.hsnCode);
+    const gstRate = numOpt(row.data.gstRatePercent);
+    if (gstRate !== undefined) fields.gstRatePercent = gstRate;
+
+    const existing = await Product.findOne({ sku: skuUpper }).lean<{ _id: mongoose.Types.ObjectId }>();
+    if (existing) {
+      await Product.findByIdAndUpdate(existing._id, { $set: fields });
+      updatedCount++;
+    } else {
+      await Product.create({ ...fields, sku: skuUpper, isActive: true, createdBy: actorOid });
+      createdCount++;
+    }
+  }
+
+  return { createdCount, updatedCount };
 }

@@ -4,8 +4,6 @@ import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { assertRole } from '@mw/requireRole';
 import { apiError, success } from '@lib/utils/api-response';
 import { commitBatch, discardBatch } from '@services/ops/ImportEngine';
-import { ImportBatch } from '@models/ops/ImportBatch';
-import { connectDB } from '@lib/db/connect';
 import { AppError } from '@services/AuthService';
 
 export const dynamic = 'force-dynamic';
@@ -40,16 +38,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // commit — load batch and re-run rows (canteen/manufacturer/product only for now)
-  await connectDB();
-  const batch = await ImportBatch.findById(parsed.batchId);
-  if (!batch) return apiError('OPS_019', 'Import batch not found.', 404);
-  if (batch.status !== 'previewed') return apiError('OPS_020', `Batch status is "${batch.status}" — only "previewed" batches can be committed.`, 409);
-  if (batch.errorRows > 0) return apiError('OPS_021', `Batch has ${batch.errorRows} row error(s). Fix the file and re-upload before committing.`, 422);
-
   try {
-    await commitBatch(parsed.batchId, async () => 0, []); // rows already validated at preview; commit marks status
-    return success({ batchId: parsed.batchId, status: 'committed', importedRows: batch.validRows });
+    const result = await commitBatch(parsed.batchId, payload.userId);
+    return success(result);
   } catch (err) {
     if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);
     throw err;

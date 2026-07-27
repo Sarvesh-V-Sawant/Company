@@ -17,8 +17,11 @@ export interface IImportBatch extends Document {
   validRows: number;
   errorRows: number;
   importedRows: number;
+  createdCount: number;
+  updatedCount: number;
   status: ImportBatchStatus;
   rowErrors: IImportError[];
+  rows?: Array<{ rowNumber: number; data: Record<string, unknown> }>;
   chainId?: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -43,8 +46,11 @@ const ImportBatchSchema = new Schema<IImportBatch>(
     validRows:     { type: Number, required: true, default: 0 },
     errorRows:     { type: Number, required: true, default: 0 },
     importedRows:  { type: Number, required: true, default: 0 },
+    createdCount:  { type: Number, required: true, default: 0 },
+    updatedCount:  { type: Number, required: true, default: 0 },
     status:        { type: String, enum: ['previewed', 'committed', 'discarded', 'failed'], required: true, default: 'previewed' },
     rowErrors:     { type: [ImportErrorSchema], default: [] },
+    rows:          { type: Schema.Types.Mixed },
     chainId:       { type: Schema.Types.ObjectId, ref: 'Chain' },
     createdBy:     { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
