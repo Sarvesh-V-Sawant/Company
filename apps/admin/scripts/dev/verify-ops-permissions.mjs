@@ -36,7 +36,7 @@ if (!process.env.MONGODB_URI) {
 }
 
 const BASE      = 'http://localhost:3000';
-const PASSWORD  = 'TestPass123!';
+const PASSWORD  = process.env.OPS_TEST_PASSWORD || createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 16) + 'Aa1!';
 const sha256    = (s) => createHash('sha256').update(s).digest('hex');
 const rawFP     = (role) => sha256(`seed-fp-${role}`);
 const ROLES     = ['super_admin', 'admin', 'manager', 'executive', 'employee'];
@@ -91,6 +91,21 @@ async function phaseB2(tokens, C1_ID) {
     const s = await req(t, 'PATCH', `/api/v1/ops/canteens/${C1_ID}/status`, { isActive: true });
     const pass = (obs, exp) => obs === exp ? '✓' : `✗(got ${obs})`;
     console.log(`${role.padEnd(12)} | ${g.status} ${pass(g.status,eG).padEnd(5)} | ${p.status} ${pass(p.status,eP).padEnd(5)} | ${u.status} ${pass(u.status,eU).padEnd(5)} | ${s.status} ${pass(s.status,eS)}`);
+  }
+}
+
+// ── Phase B2b: Status route across all 6 ops entities (admin) ────────────────
+
+const STATUS_ENTITIES = ['canteens', 'manufacturers', 'products', 'addresses', 'price-lists', 'commission-rules'];
+
+async function phaseB2b(adminToken) {
+  console.log('\n=== B2b: STATUS ROUTE — all 6 ops entities (admin) ===');
+  for (const entity of STATUS_ENTITIES) {
+    const list = await req(adminToken, 'GET', `/api/v1/ops/${entity}`);
+    const id = list.data?.data?.[0]?._id;
+    if (!id) { console.log(`${entity.padEnd(18)} | SKIP (no records)`); continue; }
+    const res = await req(adminToken, 'PATCH', `/api/v1/ops/${entity}/${id}/status`, { isActive: true });
+    console.log(`${entity.padEnd(18)} | status=${res.status} ${res.status === 200 ? 'PASS' : 'FAIL'}`);
   }
 }
 
@@ -212,6 +227,19 @@ for (const role of ROLES) {
 }
 
 await phaseB2(tokens, C1_ID);
+if (tokens['admin']) await phaseB2b(tokens['admin']);
+if (tokens['manager']) {
+  console.log('\n=== B2c: STATUS ROUTE — manager/executive role check (no permission changes) ===');
+  const cList = await req(tokens['admin'] ?? tokens['super_admin'], 'GET', '/api/v1/ops/canteens');
+  const cid = cList.data?.data?.[0]?._id;
+  if (cid) {
+    for (const role of ['manager', 'executive']) {
+      if (!tokens[role]) continue;
+      const r = await req(tokens[role], 'PATCH', `/api/v1/ops/canteens/${cid}/status`, { isActive: true });
+      console.log(`${role.padEnd(12)} | status=${r.status} code=${code(r.data) || '-'}`);
+    }
+  }
+}
 if (tokens['employee']) {
   await phaseB3B4(tokens['employee']);
   await phaseB5(tokens['admin'] ?? tokens['super_admin']);

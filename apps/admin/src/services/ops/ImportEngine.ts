@@ -13,6 +13,9 @@ import { Canteen } from '@models/ops/Canteen';
 import { Manufacturer } from '@models/ops/Manufacturer';
 import { Product } from '@models/ops/Product';
 import { AppError } from '@services/AuthService';
+import { CreateCanteenSchema } from '@validators/ops/canteen';
+import { CreateManufacturerSchema } from '@validators/ops/manufacturer';
+import { CreateProductSchema } from '@validators/ops/product';
 
 export interface RowError {
   rowNumber: number;
@@ -202,6 +205,26 @@ async function upsertCanteens(
     }
   }
 
+  // Phase 1b: format validation — same schema the single-record API uses.
+  for (const row of rows) {
+    const parsed = CreateCanteenSchema.safeParse({
+      code: str(row.data.code),
+      name: str(row.data.name),
+      type: str(row.data.type).toLowerCase(),
+      parentCanteenId: '000000000000000000000000', // placeholder; relation already verified above
+      gstin: strOpt(row.data.gstin),
+      contactPerson: strOpt(row.data.contactPerson),
+      phone: strOpt(row.data.phone),
+      email: strOpt(row.data.email),
+    });
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        if (issue.path[0] === 'parentCanteenId') continue; // placeholder-only failure, ignore
+        relationErrors.push(`Row ${row.rowNumber}: ${issue.path.join('.')} — ${issue.message}`);
+      }
+    }
+  }
+
   if (relationErrors.length > 0) {
     throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
   }
@@ -244,6 +267,28 @@ async function upsertManufacturers(
   rows: ParsedRow[],
   actorOid: mongoose.Types.ObjectId,
 ): Promise<{ createdCount: number; updatedCount: number }> {
+  // Phase 1: format validation — same schema the single-record API uses.
+  const formatErrors: string[] = [];
+  for (const row of rows) {
+    const parsed = CreateManufacturerSchema.safeParse({
+      code: str(row.data.code),
+      name: str(row.data.name),
+      gstin: strOpt(row.data.gstin),
+      primaryEmail: str(row.data.primaryEmail),
+      contactPerson: strOpt(row.data.contactPerson),
+      phone: strOpt(row.data.phone),
+    });
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        formatErrors.push(`Row ${row.rowNumber}: ${issue.path.join('.')} — ${issue.message}`);
+      }
+    }
+  }
+  if (formatErrors.length > 0) {
+    throw new AppError('OPS_024', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
+  }
+
+  // Phase 2: upsert all rows.
   let createdCount = 0;
   let updatedCount = 0;
 
@@ -296,6 +341,30 @@ async function upsertProducts(
 
   if (relationErrors.length > 0) {
     throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
+  }
+
+  // Phase 1b: format validation — same schema the single-record API uses.
+  const formatErrors: string[] = [];
+  for (const row of rows) {
+    const rawPackSize = row.data.packSize;
+    const rawGstRate = row.data.gstRatePercent;
+    const parsed = CreateProductSchema.safeParse({
+      sku: str(row.data.sku),
+      name: str(row.data.name),
+      manufacturerId: mfrCodeCache.get(str(row.data.manufacturerCode).toUpperCase())?.toString() ?? '000000000000000000000000',
+      uom: str(row.data.uom),
+      packSize: strOpt(rawPackSize) !== undefined ? Number(rawPackSize) : undefined,
+      hsnCode: strOpt(row.data.hsnCode),
+      gstRatePercent: strOpt(rawGstRate) !== undefined ? Number(rawGstRate) : undefined,
+    });
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        formatErrors.push(`Row ${row.rowNumber}: ${issue.path.join('.')} — ${issue.message}`);
+      }
+    }
+  }
+  if (formatErrors.length > 0) {
+    throw new AppError('OPS_024', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
   }
 
   // Phase 2: upsert all rows.

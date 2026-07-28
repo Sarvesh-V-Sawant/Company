@@ -51,7 +51,14 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 export function rawFingerprint(role) { return sha256(`seed-fp-${role}`); }
 
 const SEED_PREFIX = 'PHASED_TEST_';
-const PASSWORD    = 'TestPass123!';
+// Read from env; if unset, generate an ephemeral password and print it once so it
+// can be exported for reuse by the other ops dev scripts in this session.
+const PASSWORD = process.env.OPS_TEST_PASSWORD || (() => {
+  const generated = createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 16) + 'Aa1!';
+  console.log(`OPS_TEST_PASSWORD not set — generated ephemeral password for this session.`);
+  console.log(`Export it to reuse across scripts: export OPS_TEST_PASSWORD='${generated}'`);
+  return generated;
+})();
 const ROLES       = ['super_admin', 'admin', 'manager', 'executive', 'employee'];
 
 // ── Inline schemas (strict:false so extra fields like createdBy are stored) ──
