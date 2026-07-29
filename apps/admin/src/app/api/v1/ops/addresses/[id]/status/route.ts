@@ -16,7 +16,7 @@ export async function PATCH(
   let payload;
   try { payload = await getAuthUser(request); }
   catch (err) { if (err instanceof AuthError) return apiError(err.code, 'Unauthorized.', err.httpStatus); throw err; }
-  try { assertRole(payload, 'super_admin', 'admin'); }
+  try { assertRole(payload, 'super_admin', 'admin', 'manager'); }
   catch (err) { if (err instanceof AuthError) return apiError(err.code, 'Forbidden.', err.httpStatus); throw err; }
 
   const { id } = await context.params;

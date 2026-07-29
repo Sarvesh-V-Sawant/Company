@@ -88,9 +88,9 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/change-password', request.url));
     }
 
-    if (!isApi && payload.role !== 'admin') {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
-    }
+    // Page-level role authorization is enforced by each API route's assertRole
+    // check, not here — this predates the multi-role Work Desk/HR model and
+    // previously blocked every non-'admin' role from every page.
 
     if (process.env.MAINTENANCE_MODE === 'true' && !isApi) {
       return NextResponse.rewrite(new URL('/maintenance.html', request.url));

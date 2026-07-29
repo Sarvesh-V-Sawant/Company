@@ -160,6 +160,10 @@ export class AttendanceService {
     if (!user.isActive) throw new AppError('AUTH_007', 403, 'Account deactivated.');
 
     // Validate device fingerprint (BR-ATT-02)
+    // NOTE: AUTH_004 is overloaded — here it means "malformed X-Device-Fingerprint
+    // header on a check-in request"; in AuthService.login it means "no registeredDevice
+    // on the user account". Same code, different meaning depending on call site. Not
+    // split this phase (attendance scope) — noted for 30.10.
     const FINGERPRINT_REGEX = /^[0-9a-f]{64}$/i;
     if (!FINGERPRINT_REGEX.test(input.deviceFingerprintHeader)) {
       throw new AppError('AUTH_004', 401, 'Missing or malformed device fingerprint.');

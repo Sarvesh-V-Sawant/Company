@@ -193,7 +193,13 @@ async function upsertCanteens(
 
   for (const row of rows) {
     const rawParent = strOpt(row.data.parentCanteenCode);
-    if (!rawParent) continue;
+    const type = str(row.data.type).toLowerCase();
+    if (!rawParent) {
+      if (type === 'subsidiary') {
+        relationErrors.push(`Row ${row.rowNumber}: ParentCanteenCode is required for subsidiary canteens`);
+      }
+      continue;
+    }
     const parentCodeUpper = rawParent.toUpperCase();
     if (parentCodeCache.has(parentCodeUpper)) continue;
 
@@ -205,7 +211,12 @@ async function upsertCanteens(
     }
   }
 
+  if (relationErrors.length > 0) {
+    throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
+  }
+
   // Phase 1b: format validation — same schema the single-record API uses.
+  const formatErrors: string[] = [];
   for (const row of rows) {
     const parsed = CreateCanteenSchema.safeParse({
       code: str(row.data.code),
@@ -220,13 +231,13 @@ async function upsertCanteens(
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         if (issue.path[0] === 'parentCanteenId') continue; // placeholder-only failure, ignore
-        relationErrors.push(`Row ${row.rowNumber}: ${issue.path.join('.')} — ${issue.message}`);
+        formatErrors.push(`Row ${row.rowNumber}: ${issue.path.join('.')} — ${issue.message}`);
       }
     }
   }
 
-  if (relationErrors.length > 0) {
-    throw new AppError('OPS_024', 422, `Commit blocked — unresolved references:\n${relationErrors.join('\n')}`);
+  if (formatErrors.length > 0) {
+    throw new AppError('OPS_025', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
   }
 
   // Phase 2: upsert all rows.
@@ -285,7 +296,7 @@ async function upsertManufacturers(
     }
   }
   if (formatErrors.length > 0) {
-    throw new AppError('OPS_024', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
+    throw new AppError('OPS_025', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
   }
 
   // Phase 2: upsert all rows.
@@ -364,7 +375,7 @@ async function upsertProducts(
     }
   }
   if (formatErrors.length > 0) {
-    throw new AppError('OPS_024', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
+    throw new AppError('OPS_025', 422, `Commit blocked — invalid field format:\n${formatErrors.join('\n')}`);
   }
 
   // Phase 2: upsert all rows.

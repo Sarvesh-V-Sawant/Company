@@ -122,9 +122,14 @@ export class AuthService {
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
     if (!passwordOk) throw new AppError('AUTH_001', 401);
 
-    // Admin-role users (web portal) bypass device fingerprint checks.
+    // Work Desk / HR web-portal roles (admin, super_admin, manager, executive) bypass
+    // device fingerprint checks — the web login form never collects one.
     // Mobile employee logins always require a registered device + matching fingerprint.
-    if (user.role !== 'admin') {
+    if (user.role === 'employee') {
+      // NOTE: AUTH_004 is overloaded — here it means "employee has no registeredDevice
+      // on file"; in AttendanceService.checkIn it means "malformed fingerprint header
+      // on the request". Same code, different meaning depending on call site. Not
+      // split this phase (attendance scope) — noted for 30.10.
       if (!user.registeredDevice) throw new AppError('AUTH_004', 401);
       if (!deviceFingerprint) throw new AppError('AUTH_005', 401);
       const fingerprintHash = sha256(deviceFingerprint);
