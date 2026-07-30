@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify, errors as joseErrors } from 'jose';
+import { WORK_DESK_ROLES, ATTENDANCE_ADMIN_ROLES } from '@constants/roles';
+import type { UserRole } from '@app-types/enums';
+
+// Any authenticated role may reach these — no per-role restriction.
+const ANY_AUTHENTICATED_PATHS = ['/', '/dashboard', '/profile', '/notifications', '/change-password'];
+
+// Ordered most-specific-first; first matching prefix wins. Anything that
+// matches no prefix here is default-denied (see proxy() below) — a new page
+// must be added here explicitly, it is never silently public.
+const PAGE_ROLE_MAP: { prefix: string; roles: UserRole[] }[] = [
+  { prefix: '/desk', roles: WORK_DESK_ROLES },
+  { prefix: '/settings', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/attendance', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/payroll', roles: ATTENDANCE_ADMIN_ROLES },
+  // Remaining HR/admin pages — same admin-only posture as settings/attendance/
+  // payroll above (this is what the pre-regression blanket admin-only gate
+  // already enforced for these; kept as-is, not part of the Work Desk fix).
+  { prefix: '/employees', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/leave', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/regularization', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/reports', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/devices', roles: ATTENDANCE_ADMIN_ROLES },
+  { prefix: '/audit-logs', roles: ATTENDANCE_ADMIN_ROLES },
+];
 
 const PUBLIC_PATHS = [
   '/login',
@@ -88,9 +112,16 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/change-password', request.url));
     }
 
-    // Page-level role authorization is enforced by each API route's assertRole
-    // check, not here — this predates the multi-role Work Desk/HR model and
-    // previously blocked every non-'admin' role from every page.
+    // Page-level role authorization. API routes are gated separately by each
+    // route's own assertRole check (data-level); this gates which PAGES a role
+    // may load at all, independent of whether the data calls on that page 403.
+    if (!isApi && !ANY_AUTHENTICATED_PATHS.some((p) => (p === '/' ? pathname === '/' : pathname.startsWith(p)))) {
+      const rule = PAGE_ROLE_MAP.find((r) => pathname.startsWith(r.prefix));
+      const role = payload.role as UserRole;
+      if (!rule || !rule.roles.includes(role)) {
+        return NextResponse.redirect(new URL('/unauthorized', request.url));
+      }
+    }
 
     if (process.env.MAINTENANCE_MODE === 'true' && !isApi) {
       return NextResponse.rewrite(new URL('/maintenance.html', request.url));

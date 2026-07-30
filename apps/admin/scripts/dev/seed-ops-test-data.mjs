@@ -104,6 +104,11 @@ const Canteen      = mongoose.models['Canteen']        ?? mongoose.model('Cantee
 const Product      = mongoose.models['Product']        ?? mongoose.model('Product',        ProductSchema);
 const PriceList    = mongoose.models['PriceList']      ?? mongoose.model('PriceList',      PriceListSchema);
 const CommRule     = mongoose.models['CommissionRule'] ?? mongoose.model('CommissionRule', CommRuleSchema);
+const OpsAddressSchema = new mongoose.Schema({
+  ownerType: String, ownerId: mongoose.Schema.Types.ObjectId, label: String, addressType: String,
+  line1: String, city: String, state: String, stateCode: String, pincode: String, isActive: { type: Boolean, default: true },
+}, { timestamps: true, strict: false });
+const OpsAddress = mongoose.models['OpsAddress'] ?? mongoose.model('OpsAddress', OpsAddressSchema);
 
 async function cleanup() {
   const testUsers = await User.find({ employeeId: { $regex: `^${SEED_PREFIX}` } }).select('_id').lean();
@@ -160,10 +165,37 @@ async function seed() {
   await PriceList.create({ manufacturerId: mfr1._id, effectiveFrom: new Date('2026-01-01'), effectiveTo: new Date('2026-06-30'), items: [{ productId: p1._id, rate: 100 }, { productId: p2._id, rate: 200 }], createdBy: actorId, updatedBy: actorId });
   await CommRule.create({ scope: 'manufacturer', manufacturerId: mfr1._id, type: 'percentage', value: 5, effectiveFrom: new Date('2026-01-01'), effectiveTo: new Date('2026-12-31'), createdBy: actorId, updatedBy: actorId });
 
+  // Addresses — one each across canteen / manufacturer / company ownerType.
+  await OpsAddress.deleteMany({ label: { $regex: `^${SEED_PREFIX}` } });
+  await OpsAddress.create({ ownerType: 'canteen', ownerId: c1._id, label: `${SEED_PREFIX}ADDR_CANTEEN`, addressType: 'both', line1: '1 Canteen Rd', city: 'Mumbai', state: 'Maharashtra', stateCode: 'MH', pincode: '400001', createdBy: actorId, updatedBy: actorId });
+  await OpsAddress.create({ ownerType: 'manufacturer', ownerId: mfr1._id, label: `${SEED_PREFIX}ADDR_MFR`, addressType: 'billTo', line1: '2 Mfr Rd', city: 'Pune', state: 'Maharashtra', stateCode: 'MH', pincode: '411001', createdBy: actorId, updatedBy: actorId });
+  await OpsAddress.create({ ownerType: 'company', label: `${SEED_PREFIX}ADDR_COMPANY`, addressType: 'both', line1: '3 HQ Rd', city: 'Mumbai', state: 'Maharashtra', stateCode: 'MH', pincode: '400002', createdBy: actorId, updatedBy: actorId });
+
+  // Bulk fixture rows — ensure each of the six master collections has 25+ rows
+  // so pagination has a real page 2. All reference real, already-seeded entities.
+  const BULK_PREFIX = `${SEED_PREFIX}BULK`;
+  await Canteen.deleteMany({ code: { $regex: `^${BULK_PREFIX}` } });
+  await Manufacturer.deleteMany({ code: { $regex: `^${BULK_PREFIX}` } });
+  await Product.deleteMany({ sku: { $regex: `^${BULK_PREFIX}` } });
+  await OpsAddress.deleteMany({ label: { $regex: `^${BULK_PREFIX}` } });
+  await PriceList.deleteMany({ manufacturerId: mfr1._id, effectiveFrom: { $gte: new Date('2030-01-01') } });
+  await CommRule.deleteMany({ manufacturerId: mfr1._id, effectiveFrom: { $gte: new Date('2030-01-01') } });
+
+  for (let i = 1; i <= 25; i++) {
+    const n = String(i).padStart(2, '0');
+    await Canteen.create({ code: `${BULK_PREFIX}_C${n}`, name: `Bulk Canteen ${n}`, type: 'main', isActive: true, createdBy: actorId, updatedBy: actorId });
+    await Manufacturer.create({ code: `${BULK_PREFIX}_M${n}`, name: `Bulk Mfr ${n}`, primaryEmail: `bulkmfr${n}@test.local`, isActive: true, createdBy: actorId, updatedBy: actorId });
+    await Product.create({ sku: `${BULK_PREFIX}_P${n}`, name: `Bulk Product ${n}`, uom: 'PCS', manufacturerId: mfr1._id, isActive: true, createdBy: actorId, updatedBy: actorId });
+    await OpsAddress.create({ ownerType: 'canteen', ownerId: c1._id, label: `${BULK_PREFIX}_ADDR${n}`, addressType: 'both', line1: `${n} Bulk Rd`, city: 'Mumbai', state: 'Maharashtra', stateCode: 'MH', pincode: '400001', isActive: true, createdBy: actorId, updatedBy: actorId });
+    await PriceList.create({ manufacturerId: mfr1._id, effectiveFrom: new Date(`2030-${(i % 12) + 1}-01`), effectiveTo: new Date(`2031-${(i % 12) + 1}-01`), items: [{ productId: p1._id, rate: 100 + i }], isActive: true, createdBy: actorId, updatedBy: actorId });
+    await CommRule.create({ scope: 'manufacturer', manufacturerId: mfr1._id, type: 'percentage', value: 5, effectiveFrom: new Date(`2030-${(i % 12) + 1}-01`), effectiveTo: new Date(`2031-${(i % 12) + 1}-01`), isActive: true, createdBy: actorId, updatedBy: actorId });
+  }
+
   console.log('\n=== Seeded IDs ===');
   console.log(`MFR1_ID=${mfr1._id}  MFR2_ID=${mfr2._id}`);
   console.log(`C1_ID=${c1._id}      C2_ID=${c2._id}`);
   console.log(`P1_ID=${p1._id}  P2_ID=${p2._id}  P3_ID=${p3._id}`);
+  console.log('\nBulk fixture rows: 25 per collection (canteens/manufacturers/products/addresses/pricelists/commissionrules)');
   console.log('\nTest emails (no passwords printed):');
   for (const role of ROLES) console.log(`  phased_test_${role}@test.local`);
 }

@@ -28,7 +28,7 @@ const PERMISSIONS: Record<Permission, UserRole[]> = {
   'master:view':      ['super_admin', 'admin', 'manager', 'executive'],
   'master:create':    ['super_admin', 'admin', 'manager'],
   'master:edit':      ['super_admin', 'admin', 'manager'],
-  'master:delete':    ['super_admin', 'admin'],
+  'master:delete':    ['super_admin', 'admin', 'manager'],
   'email:send':       ['super_admin', 'admin', 'manager', 'executive'],
   'report:view':      ['super_admin', 'admin', 'manager'],
   'attendance:admin': ['super_admin', 'admin'],
