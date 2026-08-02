@@ -74,7 +74,8 @@ export default function Sidebar() {
     return isOnDeskPath || !isAttendanceAdmin ? 'desk' : 'attendance';
   });
 
-  const [mastersOpen, setMastersOpen] = useState(false);
+  const isOnMastersPath = pathname.startsWith('/desk/masters');
+  const [mastersOpen, setMastersOpen] = useState(isOnMastersPath);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -86,6 +87,11 @@ export default function Sidebar() {
   useEffect(() => {
     if (isOnDeskPath && workspace !== 'desk') setWorkspace('desk');
   }, [isOnDeskPath, workspace]);
+
+  // Keep Masters expanded while a masters child route is active
+  useEffect(() => {
+    if (isOnMastersPath) setMastersOpen(true);
+  }, [isOnMastersPath]);
 
   const isActive = (href: string) =>
     href === '/dashboard' || href === '/desk'
