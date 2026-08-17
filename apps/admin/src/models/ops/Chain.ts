@@ -61,6 +61,8 @@ export interface IChain extends Document {
   commission: ICommissionRecord;
   isOnHold: boolean;
   holdReason?: string;
+  /** Status to restore when the hold is released. Set when entering ON_HOLD. */
+  preHoldStatus?: ChainStatus;
   cancelledAt?: Date;
   cancelReason?: string;
   createdBy: mongoose.Types.ObjectId;
@@ -127,6 +129,7 @@ const ChainSchema = new Schema<IChain>(
     },
     isOnHold:         { type: Boolean, default: false },
     holdReason:       String,
+    preHoldStatus:    String,
     cancelledAt:      Date,
     cancelReason:     String,
     createdBy:        { type: Schema.Types.ObjectId, ref: 'User', required: true },

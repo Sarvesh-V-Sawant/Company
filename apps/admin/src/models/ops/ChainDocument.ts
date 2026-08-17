@@ -16,6 +16,7 @@ export interface IChainDocument extends Document {
   docType: DocType;
   fileName: string;
   fileUrl: string;
+  storageKey?: string;
   mimeType: string;
   sizeBytes: number;
   version: number;
@@ -38,6 +39,11 @@ const ChainDocumentSchema = new Schema<IChainDocument>(
     docType:    { type: String, enum: DOC_TYPES, required: true },
     fileName:   { type: String, required: true },
     fileUrl:    { type: String, required: true },
+    // Persists the storage adapter key so readDocumentBytes can locate the
+    // bytes independently of fileUrl. Optional so pre-30.05 documents (if any)
+    // still load via getDocument(); they just can't be downloaded (see
+    // readDocumentBytes' explicit "no retrievable key" error).
+    storageKey: String,
     mimeType:   { type: String, required: true },
     sizeBytes:  { type: Number, required: true },
     version:    { type: Number, required: true, default: 1 },
