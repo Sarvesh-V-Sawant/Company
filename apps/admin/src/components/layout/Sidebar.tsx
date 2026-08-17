@@ -85,11 +85,13 @@ export default function Sidebar() {
 
   // Auto-switch workspace based on path
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to route change, not a render-time derivation
     if (isOnDeskPath && workspace !== 'desk') setWorkspace('desk');
   }, [isOnDeskPath, workspace]);
 
   // Keep Masters expanded while a masters child route is active
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to route change, not a render-time derivation
     if (isOnMastersPath) setMastersOpen(true);
   }, [isOnMastersPath]);
 
