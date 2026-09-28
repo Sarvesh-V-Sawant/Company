@@ -5,6 +5,11 @@ import { Product, type IProduct } from '@models/ops/Product';
 import { Manufacturer } from '@models/ops/Manufacturer';
 import { AuditLog } from '@models/AuditLog';
 import { calcSkip } from '@lib/utils/pagination';
+import { escapeRegExp } from '@lib/utils/regex';
+import { withDuplicateGuard } from '@lib/utils/ops-guards';
+import { Chain } from '@models/ops/Chain';
+import { ChainLineItem } from '@models/ops/ChainLineItem';
+import { TERMINAL_STATUSES } from '@services/ops/ChainService';
 
 export class ProductService {
   static async list(params: {
@@ -14,7 +19,7 @@ export class ProductService {
     await connectDB();
     const filter: Record<string, unknown> = {};
     if (params.search) {
-      const re = new RegExp(params.search, 'i');
+      const re = new RegExp(escapeRegExp(params.search), 'i');
       filter.$or = [{ sku: re }, { name: re }];
     }
     if (params.manufacturerId) filter.manufacturerId = new mongoose.Types.ObjectId(params.manufacturerId);
@@ -43,7 +48,7 @@ export class ProductService {
   }, actorId: string) {
     await connectDB();
     const skuUpper = data.sku.toUpperCase();
-    const existing = await Product.findOne({ sku: { $regex: new RegExp(`^${skuUpper}$`, 'i') } }).lean();
+    const existing = await Product.findOne({ sku: { $regex: new RegExp(`^${escapeRegExp(skuUpper)}$`, 'i') } }).lean();
     if (existing) throw new AppError('OPS_012', 409, `SKU "${skuUpper}" already exists.`);
 
     const mfr = await Manufacturer.findById(data.manufacturerId).lean() as { isActive: boolean } | null;
@@ -51,13 +56,17 @@ export class ProductService {
     if (!mfr.isActive) throw new AppError('OPS_014', 422, 'Manufacturer is inactive.');
 
     const actorOid = new mongoose.Types.ObjectId(actorId);
-    const p = await Product.create({
-      ...data,
-      sku: skuUpper,
-      manufacturerId: new mongoose.Types.ObjectId(data.manufacturerId),
-      createdBy: actorOid,
-      updatedBy: actorOid,
-    });
+    const p = await withDuplicateGuard(
+      () => Product.create({
+        ...data,
+        sku: skuUpper,
+        manufacturerId: new mongoose.Types.ObjectId(data.manufacturerId),
+        createdBy: actorOid,
+        updatedBy: actorOid,
+      }),
+      'OPS_012',
+      `SKU "${skuUpper}" already exists.`,
+    );
     await AuditLog.create({ performedBy: actorOid, action: 'ops.product.create', targetType: 'Product', targetId: String(p._id) });
     return p.toObject();
   }
@@ -80,6 +89,23 @@ export class ProductService {
     if (!/^[0-9a-f]{24}$/i.test(id)) throw new AppError('OPS_002', 400, 'Invalid product ID.');
     const p = await Product.findById(id).lean();
     if (!p) throw new AppError('OPS_011', 404, 'Product not found.');
+
+    if (!isActive) {
+      // Open chains carry this product on their lines; deactivating it underneath them
+      // would leave live orders pointing at a product the desk can no longer pick.
+      const chainIds = await ChainLineItem.distinct('chainId', { productId: new mongoose.Types.ObjectId(id) });
+      const openChains = chainIds.length
+        ? await Chain.countDocuments({ _id: { $in: chainIds }, status: { $nin: TERMINAL_STATUSES } })
+        : 0;
+      if (openChains > 0) {
+        throw new AppError(
+          'OPS_063',
+          409,
+          `Cannot deactivate — ${openChains} open chain(s) still have this product on their lines. Close or cancel them first.`,
+        );
+      }
+    }
+
     const actorOid = new mongoose.Types.ObjectId(actorId);
     await Product.findByIdAndUpdate(id, { isActive, updatedBy: actorOid });
     await AuditLog.create({ performedBy: actorOid, action: isActive ? 'ops.product.activate' : 'ops.product.deactivate', targetType: 'Product', targetId: id });

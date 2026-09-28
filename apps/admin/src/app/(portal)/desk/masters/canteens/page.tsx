@@ -15,6 +15,7 @@ import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 interface Canteen {
@@ -80,19 +81,19 @@ export default function CanteensPage() {
     setSaving(true);
     try {
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/canteens', { method: 'POST', body: JSON.stringify({
+        await deskJson.post('/api/v1/ops/canteens', {
           code: form.code, name: form.name, type: form.type,
           parentCanteenId: form.parentCanteenId || undefined,
           gstin: form.gstin || undefined, contactPerson: form.contactPerson || undefined,
           phone: form.phone || undefined, email: form.email || undefined,
-        }) });
+        });
         toast.success('Canteen created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/canteens/${modal.id}`, { method: 'PATCH', body: JSON.stringify({
+        await deskJson.patch(`/api/v1/ops/canteens/${modal.id}`, {
           name: form.name, gstin: form.gstin || undefined,
           contactPerson: form.contactPerson || undefined,
           phone: form.phone || undefined, email: form.email || undefined,
-        }) });
+        });
         toast.success('Canteen updated');
       }
       setModal(null);
@@ -103,10 +104,10 @@ export default function CanteensPage() {
 
   const toggleStatus = async (c: Canteen) => {
     try {
-      await apiFetch(`/api/v1/ops/canteens/${c._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !c.isActive }) });
+      await deskJson.patch(`/api/v1/ops/canteens/${c._id}/status`, { isActive: !c.isActive });
       toast.success(`Canteen ${!c.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   return (

@@ -3,6 +3,7 @@ import { z, ZodError } from 'zod';
 import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { assertRole } from '@mw/requireRole';
 import { apiError, success } from '@lib/utils/api-response';
+import { zodMessage } from '@lib/utils/ops-guards';
 import { commitBatch, discardBatch } from '@services/ops/ImportEngine';
 import { AppError } from '@services/AuthService';
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
   let parsed;
   try { parsed = CommitSchema.parse(body); }
-  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', 'Validation failed.', 400); throw err; }
+  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', zodMessage(err), 400); throw err; }
 
   if (parsed.action === 'discard') {
     try {

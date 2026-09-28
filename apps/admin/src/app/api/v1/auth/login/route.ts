@@ -8,6 +8,7 @@ import { authLimiter, getClientIp, checkRateLimit } from '@mw/rateLimiter';
 import { success, apiError } from '@lib/utils/api-response';
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes — matches JWT expiry
+const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // matches DeviceSession sliding expiresAt
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
@@ -47,6 +48,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       path: '/',
       secure: process.env.NODE_ENV === 'production',
       maxAge: ACCESS_TOKEN_TTL_SECONDS,
+    });
+    // Additive: mirrors the refresh token (already returned in the response body
+    // for the mobile app) into an HttpOnly cookie so the web proxy can silently
+    // refresh expired sessions without bouncing the user to /login.
+    res.cookies.set('__rt', `${result.sessionId}:${result.refreshToken}`, {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: REFRESH_TOKEN_TTL_SECONDS,
     });
     return res;
   } catch (err) {

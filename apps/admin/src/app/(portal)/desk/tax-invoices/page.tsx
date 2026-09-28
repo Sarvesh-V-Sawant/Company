@@ -1,18 +1,21 @@
 'use client';
-import AdminLayout from '@components/layout/AdminLayout';
-import ComingSoonCard from '@components/shared/ComingSoonCard';
+/**
+ * Tax Invoices — a stage view of the chain pipeline.
+ * All behaviour lives in the shared ChainBucketPage component so every stage
+ * inbox stays consistent.
+ */
+import { ReceiptText } from 'lucide-react';
+import ChainBucketPage from '@components/desk/ChainBucketPage';
 
 export default function TaxInvoicesPage() {
   return (
-    <AdminLayout breadcrumb={[{ label: 'Work Desk', href: '/desk' }, { label: 'Tax Invoices' }]}>
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-gray-900">Tax Invoices</h1>
-        <ComingSoonCard
-          phase="Phase 30.05"
-          title="Tax Invoice Management"
-          description="Upload manufacturer tax invoices, link to chains, track portal upload status."
-        />
-      </div>
-    </AdminLayout>
+    <ChainBucketPage
+      title="Tax Invoices"
+      bucket="taxInvoice"
+      basePath="/desk/tax-invoices"
+      icon={ReceiptText}
+      emptyTitle="No tax invoices pending"
+      emptyDescription="Chains awaiting or holding the manufacturer's tax invoice appear here."
+    />
   );
 }

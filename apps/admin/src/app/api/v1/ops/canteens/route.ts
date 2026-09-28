@@ -6,6 +6,7 @@ import { AppError } from '@services/AuthService';
 import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { assertWorkDeskAccess, assertRole } from '@mw/requireRole';
 import { success, apiError } from '@lib/utils/api-response';
+import { zodMessage } from '@lib/utils/ops-guards';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   let query;
   try { query = ListCanteensSchema.parse(Object.fromEntries(searchParams)); }
-  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', 'Validation failed.', 400); throw err; }
+  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', zodMessage(err), 400); throw err; }
 
   try {
     const result = await CanteenService.list(query);
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let parsed;
   try { parsed = CreateCanteenSchema.parse(body); }
-  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', 'Validation failed.', 400); throw err; }
+  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', zodMessage(err), 400); throw err; }
 
   try {
     const result = await CanteenService.create(parsed, payload.userId);

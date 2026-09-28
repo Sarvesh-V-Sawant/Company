@@ -44,6 +44,8 @@ const PASSWORD_CHANGE_ALLOWED = [
   '/api/v1/auth/me',
 ];
 
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // matches login/refresh route cookie TTL
+
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon\\.ico|cron|admin\\/cron|health).*)'],
 };
@@ -67,6 +69,67 @@ async function verifyJwt(token: string) {
     }
     throw err;
   }
+}
+
+// __rt cookie value is `${sessionId}:${refreshToken}` — both hex strings, ':' is a safe separator.
+async function attemptInlineRefresh(request: NextRequest): Promise<string | null> {
+  const rt = request.cookies.get('__rt')?.value;
+  if (!rt) return null;
+  const sep = rt.indexOf(':');
+  if (sep === -1) return null;
+  const sessionId = rt.slice(0, sep);
+  const refreshToken = rt.slice(sep + 1);
+  if (!sessionId || !refreshToken) return null;
+
+  try {
+    const res = await fetch(new URL('/api/v1/auth/refresh', request.url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken, sessionId }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: { accessToken?: string } };
+    return json.data?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function evaluateAuthorized(
+  payload: Record<string, unknown>,
+  pathname: string,
+  isApi: boolean,
+  requestUrl: string,
+): NextResponse | null {
+  if (
+    payload.requiresPasswordChange &&
+    !PASSWORD_CHANGE_ALLOWED.some((p) => pathname.startsWith(p))
+  ) {
+    if (isApi) {
+      return NextResponse.json(
+        { success: false, error: { code: 'AUTH_010', message: 'Password change required.' } },
+        { status: 403 },
+      );
+    }
+    return NextResponse.redirect(new URL('/change-password', requestUrl));
+  }
+
+  // Page-level role authorization. API routes are gated separately by each
+  // route's own assertRole check (data-level); this gates which PAGES a role
+  // may load at all, independent of whether the data calls on that page 403.
+  if (!isApi && !ANY_AUTHENTICATED_PATHS.some((p) => (p === '/' ? pathname === '/' : pathname.startsWith(p)))) {
+    const rule = PAGE_ROLE_MAP.find((r) => pathname.startsWith(r.prefix));
+    const role = payload.role as UserRole;
+    if (!rule || !rule.roles.includes(role)) {
+      return NextResponse.redirect(new URL('/unauthorized', requestUrl));
+    }
+  }
+
+  if (process.env.MAINTENANCE_MODE === 'true' && !isApi) {
+    return NextResponse.rewrite(new URL('/maintenance.html', requestUrl));
+  }
+
+  return null;
 }
 
 export async function proxy(request: NextRequest) {
@@ -95,40 +158,30 @@ export async function proxy(request: NextRequest) {
 
   try {
     const payload = await verifyJwt(token);
-
-    if (
-      payload.requiresPasswordChange &&
-      !PASSWORD_CHANGE_ALLOWED.some((p) => pathname.startsWith(p))
-    ) {
-      if (isApi) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: { code: 'AUTH_010', message: 'Password change required.' },
-          },
-          { status: 403 },
-        );
-      }
-      return NextResponse.redirect(new URL('/change-password', request.url));
-    }
-
-    // Page-level role authorization. API routes are gated separately by each
-    // route's own assertRole check (data-level); this gates which PAGES a role
-    // may load at all, independent of whether the data calls on that page 403.
-    if (!isApi && !ANY_AUTHENTICATED_PATHS.some((p) => (p === '/' ? pathname === '/' : pathname.startsWith(p)))) {
-      const rule = PAGE_ROLE_MAP.find((r) => pathname.startsWith(r.prefix));
-      const role = payload.role as UserRole;
-      if (!rule || !rule.roles.includes(role)) {
-        return NextResponse.redirect(new URL('/unauthorized', request.url));
-      }
-    }
-
-    if (process.env.MAINTENANCE_MODE === 'true' && !isApi) {
-      return NextResponse.rewrite(new URL('/maintenance.html', request.url));
-    }
-
-    return NextResponse.next();
+    const denied = evaluateAuthorized(payload, pathname, isApi, request.url);
+    return denied ?? NextResponse.next();
   } catch {
+    // Access token invalid/expired — attempt one inline refresh via the
+    // HttpOnly refresh cookie before falling back to login/401.
+    const newAccessToken = await attemptInlineRefresh(request);
+    if (newAccessToken) {
+      try {
+        const payload = await verifyJwt(newAccessToken);
+        const denied = evaluateAuthorized(payload, pathname, isApi, request.url);
+        const response = denied ?? NextResponse.next();
+        response.cookies.set('__session', newAccessToken, {
+          httpOnly: true,
+          sameSite: 'strict',
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: ACCESS_TOKEN_TTL_SECONDS,
+        });
+        return response;
+      } catch {
+        // fall through to the redirect/401 below
+      }
+    }
+
     if (isApi) {
       return NextResponse.json(
         { success: false, error: { code: 'AUTH_003', message: 'Unauthorized.' } },

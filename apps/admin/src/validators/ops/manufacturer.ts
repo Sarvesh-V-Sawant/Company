@@ -1,30 +1,32 @@
 import { z } from 'zod';
-import { GstinSchema, OpsListQuerySchema } from './shared';
+import { MongoIdSchema, GstinSchema, OpsListQuerySchema, CODE_REGEX, MASTER_CODE_MESSAGE, requiredText, optionalText, PhoneSchema } from './shared';
 
 const URL_SCHEMA = z.string().url('Must be a valid URL').max(500).optional().or(z.literal('')).transform((v) => v === '' ? undefined : v);
-const EMAIL_SCHEMA = z.string().email().max(255);
+const EMAIL_SCHEMA = z.string().trim().toLowerCase().email().max(255);
 
 export const CreateManufacturerSchema = z.object({
-  code:             z.string().min(1).max(20).toUpperCase(),
-  name:             z.string().min(1).max(200),
+  code:             z.string().trim().min(1).max(20).toUpperCase().regex(CODE_REGEX, MASTER_CODE_MESSAGE),
+  name:             requiredText(200),
   gstin:            GstinSchema,
-  portalName:       z.string().max(200).optional(),
+  portalName:       optionalText(200),
   portalUrl:        URL_SCHEMA,
   primaryEmail:     EMAIL_SCHEMA,
   additionalEmails: z.array(EMAIL_SCHEMA).max(10).default([]),
-  contactPerson:    z.string().max(100).optional(),
-  phone:            z.string().max(20).optional(),
+  contactPerson:    optionalText(100),
+  phone:            PhoneSchema,
 });
 
 export const UpdateManufacturerSchema = z.object({
-  name:             z.string().min(1).max(200).optional(),
+  /** '' clears it. Must target this manufacturer — checked in the service. */
+  defaultCommissionRuleId: MongoIdSchema.or(z.literal('')).optional(),
+  name:             requiredText(200).optional(),
   gstin:            GstinSchema,
-  portalName:       z.string().max(200).optional(),
+  portalName:       optionalText(200),
   portalUrl:        URL_SCHEMA,
   primaryEmail:     EMAIL_SCHEMA.optional(),
   additionalEmails: z.array(EMAIL_SCHEMA).max(10).optional(),
-  contactPerson:    z.string().max(100).optional(),
-  phone:            z.string().max(20).optional(),
+  contactPerson:    optionalText(100),
+  phone:            PhoneSchema,
 }).refine((d) => Object.values(d).some((v) => v !== undefined), {
   message: 'At least one field must be provided',
 });

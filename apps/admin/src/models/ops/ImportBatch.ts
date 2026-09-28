@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type ImportEntityType = 'PRODUCT' | 'CANTEEN' | 'MANUFACTURER' | 'ADDRESS' | 'PRICE_LIST' | 'CHAIN_LINES';
-export type ImportBatchStatus = 'previewed' | 'committed' | 'discarded' | 'failed';
+export type ImportEntityType = 'PRODUCT' | 'CANTEEN' | 'MANUFACTURER' | 'ADDRESS' | 'PRICE_LIST' | 'COMMISSION_RULE' | 'CHAIN_LINES';
+export type ImportBatchStatus = 'previewed' | 'committing' | 'committed' | 'discarded' | 'failed';
 
 export interface IImportError {
   rowNumber: number;
@@ -39,7 +39,7 @@ const ImportErrorSchema = new Schema<IImportError>(
 
 const ImportBatchSchema = new Schema<IImportBatch>(
   {
-    entityType:    { type: String, enum: ['PRODUCT', 'CANTEEN', 'MANUFACTURER', 'ADDRESS', 'PRICE_LIST', 'CHAIN_LINES'], required: true },
+    entityType:    { type: String, enum: ['PRODUCT', 'CANTEEN', 'MANUFACTURER', 'ADDRESS', 'PRICE_LIST', 'COMMISSION_RULE', 'CHAIN_LINES'], required: true },
     fileName:      { type: String, required: true },
     columnMapping: { type: Schema.Types.Mixed },
     totalRows:     { type: Number, required: true, default: 0 },
@@ -48,7 +48,7 @@ const ImportBatchSchema = new Schema<IImportBatch>(
     importedRows:  { type: Number, required: true, default: 0 },
     createdCount:  { type: Number, required: true, default: 0 },
     updatedCount:  { type: Number, required: true, default: 0 },
-    status:        { type: String, enum: ['previewed', 'committed', 'discarded', 'failed'], required: true, default: 'previewed' },
+    status:        { type: String, enum: ['previewed', 'committing', 'committed', 'discarded', 'failed'], required: true, default: 'previewed' },
     rowErrors:     { type: [ImportErrorSchema], default: [] },
     rows:          { type: Schema.Types.Mixed },
     chainId:       { type: Schema.Types.ObjectId, ref: 'Chain' },

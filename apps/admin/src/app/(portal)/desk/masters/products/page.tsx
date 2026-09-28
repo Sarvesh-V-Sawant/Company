@@ -15,6 +15,7 @@ import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 interface Product {
@@ -81,10 +82,10 @@ export default function ProductsPage() {
         gstRatePercent: form.gstRatePercent ? Number(form.gstRatePercent) : undefined,
       };
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/products', { method: 'POST', body: JSON.stringify({ ...payload, sku: form.sku, manufacturerId: form.manufacturerId }) });
+        await deskJson.post('/api/v1/ops/products', { ...payload, sku: form.sku, manufacturerId: form.manufacturerId });
         toast.success('Product created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/products/${modal.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        await deskJson.patch(`/api/v1/ops/products/${modal.id}`, payload);
         toast.success('Product updated');
       }
       setModal(null);
@@ -96,10 +97,10 @@ export default function ProductsPage() {
 
   const toggleStatus = async (p: Product) => {
     try {
-      await apiFetch(`/api/v1/ops/products/${p._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !p.isActive }) });
+      await deskJson.patch(`/api/v1/ops/products/${p._id}/status`, { isActive: !p.isActive });
       toast.success(`Product ${!p.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   return (

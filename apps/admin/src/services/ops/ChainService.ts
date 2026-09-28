@@ -28,6 +28,7 @@ import {
 } from '@services/ops/ChainStatusMachine';
 import { calcSkip } from '@lib/utils/pagination';
 import { escapeRegExp } from '@lib/utils/regex';
+import { isDuplicateKeyError } from '@lib/utils/ops-guards';
 import { chainScopeFilter } from '@lib/permissions/can';
 import type { UserRole } from '@app-types/enums';
 
@@ -42,7 +43,7 @@ const LINES_LOCKED_AFTER: ChainStatus[] = [
   'CANCELLED',
 ];
 
-const TERMINAL_STATUSES: ChainStatus[] = ['CLOSED', 'CANCELLED'];
+export const TERMINAL_STATUSES: ChainStatus[] = ['CLOSED', 'CANCELLED'];
 
 /** Maps the inbox page buckets onto concrete status sets. */
 const BUCKET_STATUSES: Record<string, ChainStatus[]> = {
@@ -129,6 +130,7 @@ export class ChainService {
       page: number; limit: number; search?: string; sortBy: string; sortOrder: 'asc' | 'desc';
       status?: ChainStatus; canteenId?: string; manufacturerId?: string; assignedTo?: string;
       bucket?: string; onHold?: boolean; fromDate?: Date; toDate?: Date; isActive?: boolean;
+      linesEditable?: boolean;
     },
     actor: ChainActor,
   ) {
@@ -151,6 +153,11 @@ export class ChainService {
     if (params.manufacturerId) filter.manufacturerId = new mongoose.Types.ObjectId(params.manufacturerId);
     if (params.assignedTo) filter.assignedTo = new mongoose.Types.ObjectId(params.assignedTo);
     if (params.onHold !== undefined) filter.isOnHold = params.onHold;
+    // Combined with $and rather than overwriting filter.status, since a caller may also pass
+    // an explicit status/bucket alongside this (e.g. a picker scoped to "open" AND editable).
+    if (params.linesEditable) {
+      filter.$and = [...((filter.$and as Record<string, unknown>[]) ?? []), { status: { $nin: LINES_LOCKED_AFTER } }];
+    }
 
     if (params.fromDate || params.toDate) {
       const range: Record<string, Date> = {};
@@ -275,26 +282,31 @@ export class ChainService {
 
     if (data.assignedTo) await this.assertAssignable(data.assignedTo);
 
-    // Guard against a double-import of the same PO for the same canteen.
-    if (data.sourcePoNumber) {
+    // Guard against a double-import of the same PO. GLOBAL: a PO number is unique across the
+    // whole desk, not just within one canteen — the same PO cannot land on two canteens either.
+    if (data.sourcePoNumber?.trim()) {
       const dupe = await Chain.findOne({
-        canteenId: new mongoose.Types.ObjectId(data.canteenId),
-        sourcePoNumber: data.sourcePoNumber,
+        poKey: this.buildPoKey(data.sourcePoNumber),
         status: { $nin: ['CANCELLED'] },
       }).select('_id chainNumber').lean<{ chainNumber: string }>();
       if (dupe) {
         throw new AppError(
           'OPS_062',
           409,
-          `PO "${data.sourcePoNumber}" is already on chain ${dupe.chainNumber} for this canteen.`,
+          `PO "${data.sourcePoNumber}" is already on chain ${dupe.chainNumber}.`,
         );
       }
     }
 
     const actorOid = new mongoose.Types.ObjectId(actor.userId);
+    const poKey = this.buildPoKey(data.sourcePoNumber);
+
+    // The number is taken as late as possible: every check above has already passed, so a
+    // rejected request never burns one. A crash after this point can still leave a gap, which
+    // is harmless — numbers are unique, not gap-free.
     const chainNumber = await generateChainNumber();
 
-    const chain = await Chain.create({
+    const chain = await this.insertChainDoc({
       chainNumber,
       status: 'PO_RECEIVED' satisfies ChainStatus,
       canteenId: new mongoose.Types.ObjectId(data.canteenId),
@@ -303,6 +315,7 @@ export class ChainService {
       shipToAddressId: data.shipToAddressId ? new mongoose.Types.ObjectId(data.shipToAddressId) : undefined,
       billToAddressId: data.billToAddressId ? new mongoose.Types.ObjectId(data.billToAddressId) : undefined,
       sourcePoNumber: data.sourcePoNumber,
+      poKey,
       sourcePoDate: data.sourcePoDate,
       // Default ownership to the creator so a chain is never unowned.
       assignedTo: data.assignedTo ? new mongoose.Types.ObjectId(data.assignedTo) : actorOid,
@@ -315,27 +328,78 @@ export class ChainService {
       updatedBy: actorOid,
     });
 
-    if (data.lines && data.lines.length > 0) {
-      await this.writeLines(String(chain._id), data.lines, actorOid);
-      await this.recalcChainValues(String(chain._id));
+    // The chain header is already saved. If any dependent write fails, remove what was written
+    // so a half-created chain (no lines / no creation event) never shows up in the inbox.
+    try {
+      if (data.lines && data.lines.length > 0) {
+        await this.writeLines(String(chain._id), data.lines, actorOid);
+        await this.recalcChainValues(String(chain._id));
+      }
+
+      await ChainEvent.create({
+        chainId: chain._id,
+        eventType: 'STATUS_CHANGE',
+        toStatus: 'PO_RECEIVED',
+        message: `Chain ${chainNumber} created`,
+        actorUserId: actorOid,
+      });
+
+      await AuditLog.create({
+        performedBy: actorOid,
+        action: 'ops.chain.create',
+        targetType: 'Chain',
+        targetId: String(chain._id),
+      });
+    } catch (err) {
+      await Promise.allSettled([
+        ChainLineItem.deleteMany({ chainId: chain._id }),
+        ChainEvent.deleteMany({ chainId: chain._id }),
+      ]);
+      await Chain.deleteOne({ _id: chain._id }).catch(() => undefined);
+      throw err;
     }
 
-    await ChainEvent.create({
-      chainId: chain._id,
-      eventType: 'STATUS_CHANGE',
-      toStatus: 'PO_RECEIVED',
-      message: `Chain ${chainNumber} created`,
-      actorUserId: actorOid,
-    });
-
-    await AuditLog.create({
-      performedBy: actorOid,
-      action: 'ops.chain.create',
-      targetType: 'Chain',
-      targetId: String(chain._id),
-    });
-
     return chain.toObject();
+  }
+
+  /** Key enforcing one live chain per PO, GLOBALLY. Undefined when there is no PO number. */
+  private static buildPoKey(poNumber?: string): string | undefined {
+    const po = poNumber?.trim();
+    return po ? po.toUpperCase() : undefined;
+  }
+
+  /** Inserts the chain header, turning a poKey collision (a racing duplicate PO) into OPS_062. */
+  private static async insertChainDoc(doc: Record<string, unknown>) {
+    try {
+      return await Chain.create(doc);
+    } catch (err) {
+      if (isDuplicateKeyError(err) && String((err as { message?: string }).message).includes('poKey')) {
+        throw new AppError('OPS_062', 409, 'A chain already exists for this PO number.');
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Single-document compare-and-set on the status. Mongoose save() would write blindly and
+   * let two concurrent transitions both "succeed"; this makes the loser fail cleanly.
+   */
+  static async casChain(
+    chainId: mongoose.Types.ObjectId,
+    expectedStatus: ChainStatus,
+    set: Record<string, unknown>,
+    unset: Record<string, ''> = {},
+  ): Promise<void> {
+    const update: Record<string, unknown> = { $set: set };
+    if (Object.keys(unset).length > 0) update.$unset = unset;
+    const res = await Chain.updateOne({ _id: chainId, status: expectedStatus }, update);
+    if (res.matchedCount === 0) {
+      throw new AppError(
+        'OPS_065',
+        409,
+        'This chain was changed by someone else while you were working. Reload it and try again.',
+      );
+    }
   }
 
   private static async assertAddressBelongs(
@@ -387,8 +451,29 @@ export class ChainService {
     await this.assertAddressBelongs(data.shipToAddressId, String(chain.canteenId), ['shipTo', 'both']);
     await this.assertAddressBelongs(data.billToAddressId, String(chain.canteenId), ['billTo', 'both']);
 
+    if (data.originCanteenId) {
+      const origin = await Canteen.findById(data.originCanteenId).select('_id').lean();
+      if (!origin) throw new AppError('OPS_034', 422, 'Origin canteen not found.');
+    }
+
     const actorOid = new mongoose.Types.ObjectId(actor.userId);
     const before = chain.toObject();
+
+    if (data.sourcePoNumber !== undefined) {
+      const newKey = this.buildPoKey(data.sourcePoNumber);
+      if (newKey && newKey !== chain.poKey) {
+        // GLOBAL: matches on poKey alone, not scoped to this canteen or manufacturer.
+        const clash = await Chain.findOne({
+          _id: { $ne: chain._id },
+          poKey: newKey,
+          status: { $ne: 'CANCELLED' },
+        }).select('chainNumber').lean<{ chainNumber: string }>();
+        if (clash) {
+          throw new AppError('OPS_062', 409, `PO "${data.sourcePoNumber}" is already on chain ${clash.chainNumber}.`);
+        }
+      }
+      chain.poKey = newKey;
+    }
 
     if (data.shipToAddressId !== undefined) {
       chain.shipToAddressId = new mongoose.Types.ObjectId(data.shipToAddressId);
@@ -403,7 +488,14 @@ export class ChainService {
     if (data.sourcePoDate !== undefined) chain.sourcePoDate = data.sourcePoDate;
     chain.updatedBy = actorOid;
 
-    await chain.save();
+    try {
+      await chain.save();
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        throw new AppError('OPS_062', 409, 'A chain already exists for this PO number and canteen.');
+      }
+      throw err;
+    }
 
     await AuditLog.create({
       performedBy: actorOid,
@@ -459,9 +551,9 @@ export class ChainService {
     const { Product } = await import('@models/ops/Product');
     const productIds = [...seen].map((id) => new mongoose.Types.ObjectId(id));
     const products = productIds.length
-      ? await Product.find({ _id: { $in: productIds } }).select('_id uom packSize gstRatePercent isActive').lean<Array<{
+      ? await Product.find({ _id: { $in: productIds } }).select('_id uom packSize gstRatePercent isActive manufacturerId').lean<Array<{
           _id: mongoose.Types.ObjectId; uom: string; packSize?: number;
-          gstRatePercent?: number; isActive: boolean;
+          gstRatePercent?: number; isActive: boolean; manufacturerId: mongoose.Types.ObjectId;
         }>>()
       : [];
     const productMap = new Map(products.map((p) => [String(p._id), p]));
@@ -471,12 +563,21 @@ export class ChainService {
       throw new AppError('OPS_039', 422, `${missing.length} line(s) reference a product that no longer exists.`);
     }
 
+    // A line for an inactive product, or one from another manufacturer, is almost always a
+    // wrong pick — the import path already refuses it, so the editor must too.
+    const inactive = products.filter((p) => !p.isActive);
+    if (inactive.length > 0) {
+      throw new AppError('OPS_064', 422, `${inactive.length} line(s) use a product that is inactive.`);
+    }
+    const foreign = products.filter((p) => String(p.manufacturerId) !== String(chain.manufacturerId));
+    if (foreign.length > 0) {
+      throw new AppError('OPS_064', 422, `${foreign.length} line(s) use a product from a different manufacturer than this chain.`);
+    }
+
     const actorOid = new mongoose.Types.ObjectId(actor.userId);
 
-    // Phase 2: replace.
-    await ChainLineItem.deleteMany({ chainId: chain._id });
-    await this.writeLines(chainId, lines, actorOid, productMap);
-    const totals = await this.recalcChainValues(chainId);
+    // Phase 2: insert the new set first, then retire the old one (see swapLineDocs).
+    const totals = await this.swapLineDocs(chain, this.buildLineDocs(chainId, lines, productMap), actorOid);
 
     await ChainEvent.create({
       chainId: chain._id,
@@ -496,6 +597,7 @@ export class ChainService {
     return { lineCount: lines.length, ...totals };
   }
 
+  /** Inserts a fresh chain's lines (create path only — nothing to replace yet). */
   private static async writeLines(
     chainId: string,
     lines: Array<{
@@ -507,9 +609,80 @@ export class ChainService {
     productMap?: Map<string, { uom: string; packSize?: number; gstRatePercent?: number }>,
   ): Promise<void> {
     void actorOid;
+    await ChainLineItem.insertMany(this.buildLineDocs(chainId, lines, productMap));
+  }
+
+  /**
+   * Replaces a chain's lines without ever passing through an empty state.
+   *
+   * The old order was deleteMany() then insert: a failure or crash in between left the chain
+   * with NO lines. Now the new set is inserted first (ids pre-assigned so it can be removed
+   * again), the old set is retired only afterwards, and the header totals are written with a
+   * compare-and-set on updatedAt so two concurrent replacements cannot both win. A crash
+   * between insert and retire leaves both sets visible (recoverable by re-saving) rather than
+   * none.
+   */
+  static async swapLineDocs(
+    chain: IChain,
+    docs: Array<Record<string, unknown>>,
+    actorOid: mongoose.Types.ObjectId,
+  ): Promise<{ originalOrderValue: number; alteredOrderValue: number }> {
+    const oldIds = (await ChainLineItem.find({ chainId: chain._id }).select('_id').lean<Array<{ _id: mongoose.Types.ObjectId }>>())
+      .map((l) => l._id);
+    const newDocs: Array<Record<string, unknown> & { _id: mongoose.Types.ObjectId }> = docs.map((d) => ({ ...d, _id: new mongoose.Types.ObjectId() }));
+    const newIds = newDocs.map((d) => d._id);
+
+    try {
+      await ChainLineItem.insertMany(newDocs);
+    } catch (err) {
+      await ChainLineItem.deleteMany({ _id: { $in: newIds } }).catch(() => undefined);
+      throw err;
+    }
+
+    let originalOrderValue = 0;
+    let alteredOrderValue = 0;
+    for (const d of newDocs) {
+      const original = computeLineTotals({
+        alteredQty: d.originalQty as number,
+        rate: d.rate as number | undefined,
+        gstRatePercent: d.gstRatePercent as number | undefined,
+      });
+      originalOrderValue = round2(originalOrderValue + original.lineTotal);
+      alteredOrderValue = round2(alteredOrderValue + ((d.lineTotal as number | undefined) ?? 0));
+    }
+
+    const claimed = await Chain.updateOne(
+      { _id: chain._id, updatedAt: chain.updatedAt },
+      { $set: { originalOrderValue, alteredOrderValue, updatedBy: actorOid } },
+    );
+    if (claimed.matchedCount === 0) {
+      // Someone else changed the chain since it was loaded: withdraw our lines, keep theirs.
+      await ChainLineItem.deleteMany({ _id: { $in: newIds } }).catch(() => undefined);
+      throw new AppError(
+        'OPS_065',
+        409,
+        'This chain was changed by someone else while you were working. Reload it and try again.',
+      );
+    }
+
+    if (oldIds.length > 0) {
+      await ChainLineItem.deleteMany({ _id: { $in: oldIds } });
+    }
+    return { originalOrderValue, alteredOrderValue };
+  }
+
+  private static buildLineDocs(
+    chainId: string,
+    lines: Array<{
+      productId?: string; rawDescription?: string; uom: string; packSize?: number;
+      originalQty: number; alteredQty: number; varianceReason?: string;
+      varianceNote?: string; rate?: number; gstRatePercent?: number; sortOrder: number;
+    }>,
+    productMap?: Map<string, { uom: string; packSize?: number; gstRatePercent?: number }>,
+  ): Array<Record<string, unknown>> {
     const chainOid = new mongoose.Types.ObjectId(chainId);
 
-    const docs = lines.map((l, idx) => {
+    return lines.map((l, idx) => {
       const product = l.productId ? productMap?.get(l.productId) : undefined;
       // Fall back to the product master for UOM and GST when the caller omits them.
       const gstRatePercent = l.gstRatePercent ?? product?.gstRatePercent;
@@ -536,8 +709,6 @@ export class ChainService {
         sortOrder: l.sortOrder ?? idx,
       };
     });
-
-    await ChainLineItem.insertMany(docs);
   }
 
   /** Recomputes and persists the original/altered order values from the lines. */
@@ -601,12 +772,16 @@ export class ChainService {
     await this.assertTransitionPreconditions(chain, toStatus);
 
     const actorOid = new mongoose.Types.ObjectId(actor.userId);
-    chain.status = toStatus;
-    chain.updatedBy = actorOid;
-    if (toStatus === 'ON_HOLD') chain.isOnHold = true;
-    if (fromStatus === 'ON_HOLD' && toStatus !== 'ON_HOLD') chain.isOnHold = false;
-    if (toStatus === 'CANCELLED') chain.cancelledAt = new Date();
-    await chain.save();
+    const set: Record<string, unknown> = { status: toStatus, updatedBy: actorOid };
+    const unset: Record<string, ''> = {};
+    if (toStatus === 'ON_HOLD') set.isOnHold = true;
+    if (fromStatus === 'ON_HOLD' && toStatus !== 'ON_HOLD') set.isOnHold = false;
+    if (toStatus === 'CANCELLED') {
+      set.cancelledAt = new Date();
+      unset.poKey = ''; // frees the PO for a fresh chain
+    }
+    // Compare-and-set on the status we validated against: a concurrent transition loses cleanly.
+    await this.casChain(chain._id as mongoose.Types.ObjectId, fromStatus, set, unset);
 
     await ChainEvent.create({
       chainId: chain._id,
@@ -702,11 +877,15 @@ export class ChainService {
       if (!canTransition(fromStatus, 'ON_HOLD')) {
         throw new AppError('OPS_060', 409, `A chain in ${fromStatus} cannot be put on hold.`);
       }
-      chain.preHoldStatus = fromStatus;
+      await this.casChain(chain._id as mongoose.Types.ObjectId, fromStatus, {
+        preHoldStatus: fromStatus,
+        status: 'ON_HOLD',
+        isOnHold: true,
+        holdReason: reason,
+        updatedBy: actorOid,
+      });
       chain.status = 'ON_HOLD';
       chain.isOnHold = true;
-      chain.holdReason = reason;
-      await chain.save();
       await ChainEvent.create({
         chainId: chain._id, eventType: 'HOLD', fromStatus, toStatus: 'ON_HOLD',
         message: reason, actorUserId: actorOid,
@@ -716,11 +895,14 @@ export class ChainService {
       // was put on hold. Falls back to UNDER_REVIEW only for chains put on
       // hold before this field existed.
       const restoredStatus = (chain.preHoldStatus as ChainStatus) ?? 'UNDER_REVIEW';
+      await this.casChain(
+        chain._id as mongoose.Types.ObjectId,
+        chain.status as ChainStatus,
+        { status: restoredStatus, isOnHold: false, updatedBy: actorOid },
+        { holdReason: '', preHoldStatus: '' },
+      );
       chain.status = restoredStatus;
       chain.isOnHold = false;
-      chain.holdReason = undefined;
-      chain.preHoldStatus = undefined;
-      await chain.save();
       await ChainEvent.create({
         chainId: chain._id, eventType: 'HOLD', fromStatus: 'ON_HOLD', toStatus: restoredStatus,
         message: reason ?? 'Hold released', actorUserId: actorOid,
@@ -746,11 +928,12 @@ export class ChainService {
     }
 
     const actorOid = new mongoose.Types.ObjectId(actor.userId);
-    chain.status = 'CANCELLED';
-    chain.cancelledAt = new Date();
-    chain.cancelReason = reason;
-    chain.updatedBy = actorOid;
-    await chain.save();
+    await this.casChain(
+      chain._id as mongoose.Types.ObjectId,
+      fromStatus,
+      { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason, updatedBy: actorOid },
+      { poKey: '' },
+    );
 
     await ChainEvent.create({
       chainId: chain._id, eventType: 'CANCEL', fromStatus, toStatus: 'CANCELLED',

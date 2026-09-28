@@ -49,6 +49,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 0,
     });
+    res.cookies.set('__rt', '', {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 0,
+    });
     return res;
   } catch (err) {
     if (err instanceof AppError) return apiError(err.code, err.message, err.httpStatus);

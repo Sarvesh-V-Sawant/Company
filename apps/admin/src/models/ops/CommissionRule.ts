@@ -41,6 +41,11 @@ const CommissionRuleSchema = new Schema<ICommissionRule>(
 
 CommissionRuleSchema.index({ scope: 1, isActive: 1 });
 CommissionRuleSchema.index({ manufacturerId: 1, isActive: 1 });
+// Backs the import upsert's dedup key atomically — a rule is versioned by
+// scope + its scope-matching id + start date. For any given scope, the other
+// two id fields are consistently absent across all docs of that scope, so they
+// don't collide with docs of a different scope.
+CommissionRuleSchema.index({ scope: 1, manufacturerId: 1, productId: 1, canteenId: 1, effectiveFrom: 1 }, { unique: true });
 
 export const CommissionRule =
   mongoose.models.CommissionRule ?? mongoose.model<ICommissionRule>('CommissionRule', CommissionRuleSchema);

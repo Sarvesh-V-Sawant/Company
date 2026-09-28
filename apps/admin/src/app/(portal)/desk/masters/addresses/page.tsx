@@ -15,6 +15,7 @@ import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 interface OpsAddress {
@@ -71,11 +72,11 @@ export default function AddressesPage() {
     try {
       const body = { ...form, gstin: form.gstin || undefined };
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/addresses', { method: 'POST', body: JSON.stringify(body) });
+        await deskJson.post('/api/v1/ops/addresses', body);
         toast.success('Address created');
       } else if (modal?.mode === 'edit') {
         const { ownerType: _ot, ownerId: _oid, ...updateBody } = body;
-        await apiFetch(`/api/v1/ops/addresses/${modal.id}`, { method: 'PATCH', body: JSON.stringify(updateBody) });
+        await deskJson.patch(`/api/v1/ops/addresses/${modal.id}`, updateBody);
         toast.success('Address updated');
       }
       setModal(null);
@@ -87,10 +88,10 @@ export default function AddressesPage() {
 
   const toggleStatus = async (a: OpsAddress) => {
     try {
-      await apiFetch(`/api/v1/ops/addresses/${a._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !a.isActive }) });
+      await deskJson.patch(`/api/v1/ops/addresses/${a._id}/status`, { isActive: !a.isActive });
       toast.success(`Address ${!a.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   return (

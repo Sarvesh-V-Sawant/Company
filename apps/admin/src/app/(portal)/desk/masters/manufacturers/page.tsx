@@ -14,17 +14,23 @@ import Pagination from '@components/shared/Pagination';
 import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 interface Manufacturer {
   _id: string; code: string; name: string; gstin?: string;
   primaryEmail: string; phone?: string; contactPerson?: string; isActive: boolean;
+  additionalEmails?: string[]; defaultCommissionRuleId?: string;
 }
+interface RuleOption { _id: string; type: string; value: number; effectiveFrom: string; effectiveTo?: string }
+
+/** "a@x.com, b@y.com;c@z.com" -> ["a@x.com", "b@y.com", "c@z.com"] */
+const parseEmails = (s: string): string[] => s.split(/[\s,;]+/).map(e => e.trim()).filter(Boolean);
 interface ApiResp { success: boolean; data: Manufacturer[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
 let _debounce: ReturnType<typeof setTimeout> | null = null;
 type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
-const emptyForm = { code: '', name: '', gstin: '', primaryEmail: '', contactPerson: '', phone: '' };
+const emptyForm = { code: '', name: '', gstin: '', primaryEmail: '', additionalEmails: '', defaultCommissionRuleId: '', contactPerson: '', phone: '' };
 
 export default function ManufacturersPage() {
   const router = useRouter();
@@ -34,6 +40,7 @@ export default function ManufacturersPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
+  const [ruleOptions, setRuleOptions] = useState<RuleOption[]>([]);
 
   const search = params.get('search') ?? '';
   const active = params.get('isActive') ?? '';
@@ -50,14 +57,19 @@ export default function ManufacturersPage() {
     router.push(`/desk/masters/manufacturers?${sp.toString()}`);
   };
 
-  const openCreate = () => { setForm(emptyForm); setModal({ mode: 'create' }); };
+  const openCreate = () => { setForm(emptyForm); setRuleOptions([]); setModal({ mode: 'create' }); };
   const openEdit = async (id: string) => {
     setModal({ mode: 'edit', id });
     setLoadingRecord(true);
     try {
       const res = await apiFetch<{ success: boolean; data: Manufacturer }>(`/api/v1/ops/manufacturers/${id}`);
       const m = res.data;
-      setForm({ code: m.code, name: m.name, gstin: m.gstin ?? '', primaryEmail: m.primaryEmail, contactPerson: m.contactPerson ?? '', phone: m.phone ?? '' });
+      setForm({ code: m.code, name: m.name, gstin: m.gstin ?? '', primaryEmail: m.primaryEmail, additionalEmails: (m.additionalEmails ?? []).join(', '), defaultCommissionRuleId: m.defaultCommissionRuleId ?? '', contactPerson: m.contactPerson ?? '', phone: m.phone ?? '' });
+      // Only rules that target this manufacturer can be its default.
+      try {
+        const rules = await apiFetch<{ success: boolean; data: RuleOption[] }>(`/api/v1/ops/commission-rules?scope=manufacturer&manufacturerId=${id}&limit=100`);
+        setRuleOptions(rules.data ?? []);
+      } catch { setRuleOptions([]); }
     } catch { toast.error('Failed to load manufacturer details'); setModal(null); }
     finally { setLoadingRecord(false); }
   };
@@ -66,10 +78,11 @@ export default function ManufacturersPage() {
     setSaving(true);
     try {
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/manufacturers', { method: 'POST', body: JSON.stringify({ ...form, gstin: form.gstin || undefined }) });
+        const { defaultCommissionRuleId: _unused, additionalEmails, ...rest } = form; void _unused;
+        await deskJson.post('/api/v1/ops/manufacturers', { ...rest, additionalEmails: parseEmails(additionalEmails), gstin: form.gstin || undefined });
         toast.success('Manufacturer created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/manufacturers/${modal.id}`, { method: 'PATCH', body: JSON.stringify({ name: form.name, gstin: form.gstin || undefined, primaryEmail: form.primaryEmail, contactPerson: form.contactPerson || undefined, phone: form.phone || undefined }) });
+        await deskJson.patch(`/api/v1/ops/manufacturers/${modal.id}`, { name: form.name, gstin: form.gstin || undefined, primaryEmail: form.primaryEmail, additionalEmails: parseEmails(form.additionalEmails), defaultCommissionRuleId: form.defaultCommissionRuleId, contactPerson: form.contactPerson || undefined, phone: form.phone || undefined });
         toast.success('Manufacturer updated');
       }
       setModal(null);
@@ -81,10 +94,10 @@ export default function ManufacturersPage() {
 
   const toggleStatus = async (m: Manufacturer) => {
     try {
-      await apiFetch(`/api/v1/ops/manufacturers/${m._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !m.isActive }) });
+      await deskJson.patch(`/api/v1/ops/manufacturers/${m._id}/status`, { isActive: !m.isActive });
       toast.success(`Manufacturer ${!m.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   return (
@@ -162,6 +175,18 @@ export default function ManufacturersPage() {
             <Input value={form.gstin} onChange={e => setForm(p => ({ ...p, gstin: e.target.value.toUpperCase() }))} placeholder="22ABCDE1234F1Z5" /></div>
           <div><label className="text-sm font-medium text-gray-700 block mb-1">Primary Email *</label>
             <Input type="email" value={form.primaryEmail} onChange={e => setForm(p => ({ ...p, primaryEmail: e.target.value }))} /></div>
+          <div><label className="text-sm font-medium text-gray-700 block mb-1">Additional Emails</label>
+            <Input value={form.additionalEmails} onChange={e => setForm(p => ({ ...p, additionalEmails: e.target.value }))} placeholder="Comma-separated, up to 10" /></div>
+          {modal?.mode === 'edit' && (
+            <div><label className="text-sm font-medium text-gray-700 block mb-1">Default Commission Rule</label>
+              <Select value={form.defaultCommissionRuleId} onChange={e => setForm(p => ({ ...p, defaultCommissionRuleId: e.target.value }))}>
+                <option value="">None</option>
+                {ruleOptions.map(r => (
+                  <option key={r._id} value={r._id}>{`${r.type} ${r.value} — from ${r.effectiveFrom.slice(0, 10)}${r.effectiveTo ? ` to ${r.effectiveTo.slice(0, 10)}` : ''}`}</option>
+                ))}
+              </Select>
+              <p className="text-xs text-gray-400 mt-1">Only rules that target this manufacturer are listed. Create one under Masters → Commission Rules first.</p></div>
+          )}
           <div><label className="text-sm font-medium text-gray-700 block mb-1">Contact Person</label>
             <Input value={form.contactPerson} onChange={e => setForm(p => ({ ...p, contactPerson: e.target.value }))} /></div>
           <div><label className="text-sm font-medium text-gray-700 block mb-1">Phone</label>

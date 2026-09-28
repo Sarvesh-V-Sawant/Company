@@ -42,6 +42,12 @@ export interface IChain extends Document {
   shipToAddressId?: mongoose.Types.ObjectId;
   billToAddressId?: mongoose.Types.ObjectId;
   sourcePoNumber?: string;
+  /**
+   * `UPPER(TRIM(sourcePoNumber))` while the chain is live; removed on cancel. A partial unique
+   * index on it makes the one-chain-per-PO rule (GLOBAL across canteens and manufacturers)
+   * race-proof (M0 has no transactions).
+   */
+  poKey?: string;
   sourcePoDate?: Date;
   assignedTo?: mongoose.Types.ObjectId;
   handoverHistory: IHandoverEntry[];
@@ -92,6 +98,7 @@ const ChainSchema = new Schema<IChain>(
     shipToAddressId:  { type: Schema.Types.ObjectId, ref: 'OpsAddress' },
     billToAddressId:  { type: Schema.Types.ObjectId, ref: 'OpsAddress' },
     sourcePoNumber:   String,
+    poKey:            String,
     sourcePoDate:     Date,
     assignedTo:       { type: Schema.Types.ObjectId, ref: 'User' },
     handoverHistory:  { type: [HandoverEntrySchema], default: [] },
@@ -139,6 +146,7 @@ const ChainSchema = new Schema<IChain>(
 );
 
 ChainSchema.index({ chainNumber: 1 }, { unique: true });
+ChainSchema.index({ poKey: 1 }, { unique: true, partialFilterExpression: { poKey: { $type: 'string' } } });
 ChainSchema.index({ status: 1, createdAt: -1 });
 ChainSchema.index({ assignedTo: 1, status: 1 });
 ChainSchema.index({ canteenId: 1, createdAt: -1 });

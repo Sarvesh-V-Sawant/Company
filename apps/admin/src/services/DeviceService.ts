@@ -4,6 +4,7 @@ import { connectDB } from '@lib/db/connect';
 import { sha256 } from '@lib/utils/hash';
 import { sendEmail } from '@lib/email/brevo';
 import { getAppUrl } from '@lib/utils/app-url';
+import { escapeRegExp } from '@lib/utils/regex';
 import { User } from '@models/User';
 import { DeviceRequest } from '@models/DeviceRequest';
 import { DeviceSession } from '@models/DeviceSession';
@@ -251,7 +252,7 @@ export class DeviceService {
     if (query.status) filter.status = query.status;
     if (query.userId) filter.userId = new mongoose.Types.ObjectId(query.userId);
     if (query.search) {
-      const re = new RegExp(query.search, 'i');
+      const re = new RegExp(escapeRegExp(query.search), 'i');
       filter.$or = [{ email: re }, { deviceName: re }, { manufacturer: re }];
     }
 
@@ -285,7 +286,7 @@ export class DeviceService {
 
     const filter: Record<string, unknown> = { registeredDevice: { $ne: null } };
     if (query.search) {
-      const re = new RegExp(query.search, 'i');
+      const re = new RegExp(escapeRegExp(query.search), 'i');
       filter.$or = [
         { firstName: re },
         { lastName: re },

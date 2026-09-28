@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, List, Trash2 } from 'lucide-react';
+import { Plus, List, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import useSWR from 'swr';
@@ -16,6 +16,7 @@ import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 interface PriceListItem { productId: string; rate: number }
@@ -30,6 +31,7 @@ interface PriceListFull extends Omit<PriceList, 'items'> {
 }
 interface ApiResp { success: boolean; data: PriceList[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
+let _debounce: ReturnType<typeof setTimeout> | null = null;
 type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 type LineItem = { productId: string; rate: string; label: string };
 const emptyLine = (): LineItem => ({ productId: '', rate: '', label: '' });
@@ -52,9 +54,10 @@ export default function PriceListsPage() {
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
 
+  const search = params.get('search') ?? '';
   const active = params.get('isActive') ?? '';
   const mfrId  = params.get('manufacturerId') ?? '';
-  const query  = buildQuery({ isActive: active || undefined, manufacturerId: mfrId || undefined });
+  const query  = buildQuery({ search: search || undefined, isActive: active || undefined, manufacturerId: mfrId || undefined });
 
   const { data, isLoading, mutate } = useSWR<ApiResp>(`/api/v1/ops/price-lists?${query}`, (url: string) => apiFetch<ApiResp>(url));
   const items = data?.data ?? [];
@@ -121,10 +124,10 @@ export default function PriceListsPage() {
     try {
       const body = { effectiveFrom: form.effectiveFrom, effectiveTo: form.effectiveTo || undefined, items: priceItems };
       if (modal?.mode === 'create') {
-        await apiFetch('/api/v1/ops/price-lists', { method: 'POST', body: JSON.stringify({ ...body, manufacturerId: form.manufacturerId, canteenId: form.canteenId || undefined }) });
+        await deskJson.post('/api/v1/ops/price-lists', { ...body, manufacturerId: form.manufacturerId, canteenId: form.canteenId || undefined });
         toast.success('Price list created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/price-lists/${modal.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+        await deskJson.patch(`/api/v1/ops/price-lists/${modal.id}`, body);
         toast.success('Price list updated');
       }
       setModal(null);
@@ -136,10 +139,10 @@ export default function PriceListsPage() {
 
   const toggleStatus = async (pl: PriceList) => {
     try {
-      await apiFetch(`/api/v1/ops/price-lists/${pl._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !pl.isActive }) });
+      await deskJson.patch(`/api/v1/ops/price-lists/${pl._id}/status`, { isActive: !pl.isActive });
       toast.success(`Price list ${!pl.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   const fmt = (d: string) => { try { return format(new Date(d), 'dd MMM yyyy'); } catch { return d; } };
@@ -152,7 +155,12 @@ export default function PriceListsPage() {
           <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1.5" /> Add Price List</Button>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input className="pl-8" placeholder="Search manufacturer or canteen…" defaultValue={search}
+              onChange={e => { if (_debounce) clearTimeout(_debounce); _debounce = setTimeout(() => updateParam('search', e.target.value), 400); }} />
+          </div>
           <Select value={active} onChange={e => updateParam('isActive', e.target.value)} className="w-36">
             <option value="">All Status</option>
             <option value="true">Active</option>
@@ -172,7 +180,7 @@ export default function PriceListsPage() {
             {isLoading ? <TableSkeleton rows={8} cols={7} /> : items.length === 0 ? (
               <tbody><tr><td colSpan={7}>
                 <EmptyState icon={List} title="No price lists found" action={{ label: 'Add Price List', onClick: openCreate }}
-                  filtered={!!active} onClearFilters={() => router.push('/desk/masters/price-lists')} />
+                  filtered={!!(search || active)} onClearFilters={() => router.push('/desk/masters/price-lists')} />
               </td></tr></tbody>
             ) : (
               <tbody>

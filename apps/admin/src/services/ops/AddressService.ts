@@ -4,6 +4,11 @@ import { AppError } from '@services/AuthService';
 import { OpsAddress, type IOpsAddress } from '@models/ops/OpsAddress';
 import { AuditLog } from '@models/AuditLog';
 import { calcSkip } from '@lib/utils/pagination';
+import { escapeRegExp } from '@lib/utils/regex';
+import { Canteen } from '@models/ops/Canteen';
+import { Manufacturer } from '@models/ops/Manufacturer';
+import { Chain } from '@models/ops/Chain';
+import { TERMINAL_STATUSES } from '@services/ops/ChainService';
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
@@ -20,7 +25,7 @@ export class AddressService {
     await connectDB();
     const filter: Record<string, unknown> = {};
     if (params.search) {
-      const re = new RegExp(params.search, 'i');
+      const re = new RegExp(escapeRegExp(params.search), 'i');
       filter.$or = [{ label: re }, { city: re }, { state: re }];
     }
     if (params.ownerType) filter.ownerType = params.ownerType;
@@ -52,6 +57,13 @@ export class AddressService {
     assertGstin(data.gstin);
     const actorOid = new mongoose.Types.ObjectId(actorId);
     const ownerOid = data.ownerId ? new mongoose.Types.ObjectId(data.ownerId) : undefined;
+
+    // An address for an owner that does not exist can never be picked and cannot be cleaned up from the UI.
+    if (data.ownerType === 'canteen' || data.ownerType === 'manufacturer') {
+      const Owner = data.ownerType === 'canteen' ? Canteen : Manufacturer;
+      const owner = ownerOid ? await Owner.findById(ownerOid).select('_id').lean() : null;
+      if (!owner) throw new AppError('OPS_064', 422, `The ${data.ownerType} for this address was not found.`);
+    }
 
     if (data.isDefault && ownerOid) {
       // Atomically unset isDefault on all other addresses for the same owner + addressType
@@ -101,6 +113,21 @@ export class AddressService {
     if (!/^[0-9a-f]{24}$/i.test(id)) throw new AppError('OPS_002', 400, 'Invalid address ID.');
     const a = await OpsAddress.findById(id).lean();
     if (!a) throw new AppError('OPS_015', 404, 'Address not found.');
+
+    if (!isActive) {
+      const openChains = await Chain.countDocuments({
+        $or: [{ shipToAddressId: id }, { billToAddressId: id }],
+        status: { $nin: TERMINAL_STATUSES },
+      });
+      if (openChains > 0) {
+        throw new AppError(
+          'OPS_063',
+          409,
+          `Cannot deactivate — ${openChains} open chain(s) use this as a ship-to or bill-to address. Change the address on those chains first.`,
+        );
+      }
+    }
+
     const actorOid = new mongoose.Types.ObjectId(actorId);
     await OpsAddress.findByIdAndUpdate(id, { isActive, updatedBy: actorOid });
     await AuditLog.create({ performedBy: actorOid, action: isActive ? 'ops.address.activate' : 'ops.address.deactivate', targetType: 'OpsAddress', targetId: id });

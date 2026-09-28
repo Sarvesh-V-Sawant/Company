@@ -6,7 +6,8 @@ import {
   LayoutDashboard, Users, Clock, CalendarDays, RefreshCcw, DollarSign,
   BarChart3, Bell, ClipboardList, Settings, LogOut, Hexagon, Smartphone,
   Briefcase, ChevronDown, ChevronUp, Link2, FileText, Truck, CreditCard,
-  Mail, BookOpen, Upload, LayoutGrid,
+  Mail, BookOpen, Upload, LayoutGrid, FilePen, ReceiptText, FileCheck,
+  IndianRupee, SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@lib/utils/cn';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,13 +21,16 @@ const NAV_DESK: NavItem[] = [
   { href: '/desk',                         label: 'Dashboard',        icon: LayoutDashboard },
   { href: '/desk/chains',                  label: 'Chains',           icon: Link2 },
   { href: '/desk/purchase-orders',         label: 'PO Inbox',         icon: FileText },
-  { href: '/desk/tax-invoices',            label: 'Tax Invoices',     icon: FileText },
-  { href: '/desk/sales-orders',            label: 'Sales Orders',     icon: FileText },
+  { href: '/desk/altered-orders',          label: 'Altered Orders',   icon: FilePen },
+  { href: '/desk/tax-invoices',            label: 'Tax Invoices',     icon: ReceiptText },
+  { href: '/desk/sales-orders',            label: 'Sales Orders',     icon: FileCheck },
   { href: '/desk/transit',                 label: 'Transit',          icon: Truck },
   { href: '/desk/payments',                label: 'Payments',         icon: CreditCard },
+  { href: '/desk/commission',              label: 'Commission',       icon: IndianRupee },
   { href: '/desk/emails',                  label: 'Emails',           icon: Mail },
   { href: '/desk/import',                  label: 'Bulk Import',      icon: Upload },
   { href: '/desk/reports',                 label: 'Reports',          icon: BarChart3 },
+  { href: '/desk/settings',                label: 'Desk Settings',    icon: SlidersHorizontal },
 ];
 
 const NAV_DESK_MASTERS: NavItem[] = [

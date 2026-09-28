@@ -5,20 +5,26 @@ import { toast } from 'sonner';
 import AdminLayout from '@components/layout/AdminLayout';
 import { Button } from '@components/ui/button';
 import { Select } from '@components/ui/select';
-import { apiFetch, apiFetchBlob } from '@lib/utils/api-client';
+import { apiFetchBlob } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
+import EntityPicker from '@components/shared/EntityPicker';
 
-type EntityType = 'canteen' | 'manufacturer' | 'product';
+type EntityType = 'canteen' | 'manufacturer' | 'product' | 'address' | 'price_list' | 'commission_rule' | 'chain_lines';
 type ImportStatus = 'idle' | 'uploading' | 'previewed' | 'committing' | 'committed';
 
 interface RowError { rowNumber: number; field: string; message: string }
 interface ParsedRow { rowNumber: number; data: Record<string, unknown>; errors: RowError[] }
 interface PreviewResult { batchId: string; fileName: string; totalRows: number; validRows: number; errorRows: number; rows: ParsedRow[] }
+interface RowOutcome { rowNumber: number; key: string; action: 'created' | 'updated' }
+interface CommitResult { createdCount: number; updatedCount: number; rowOutcomes?: RowOutcome[] }
 
 export default function ImportPage() {
   const [entity, setEntity] = useState<EntityType>('canteen');
   const [status, setStatus] = useState<ImportStatus>('idle');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [committed, setCommitted] = useState<CommitResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [chainId, setChainId] = useState('');
 
   const handleDownloadTemplate = async () => {
     try {
@@ -32,19 +38,22 @@ export default function ImportPage() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (entity === 'chain_lines' && !chainId) { toast.error('Choose the target chain first'); if (fileRef.current) fileRef.current.value = ''; return; }
     setStatus('uploading');
     setPreview(null);
+    setCommitted(null);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('entityType', entity.toUpperCase());
+      if (entity === 'chain_lines') fd.append('chainId', chainId);
       const res = await fetch('/api/v1/ops/import/preview', {
         method: 'POST',
         body: fd,
         credentials: 'include',
       });
-      const json = await res.json() as { success: boolean; data: PreviewResult; message?: string };
-      if (!json.success) { toast.error(json.message ?? 'Preview failed'); setStatus('idle'); return; }
+      const json = await res.json() as { success: boolean; data: PreviewResult; error?: { message?: string } };
+      if (!json.success) { toast.error(json.error?.message ?? 'Preview failed'); setStatus('idle'); if (fileRef.current) fileRef.current.value = ''; return; }
       setPreview(json.data);
       setStatus('previewed');
     } catch { toast.error('Upload failed'); setStatus('idle'); }
@@ -55,8 +64,9 @@ export default function ImportPage() {
     if (!preview) return;
     setStatus('committing');
     try {
-      await apiFetch('/api/v1/ops/import/commit', { method: 'POST', body: JSON.stringify({ batchId: preview.batchId, action: 'commit' }) });
+      const res = await deskJson.post<{ success: boolean; data: CommitResult }>('/api/v1/ops/import/commit', { batchId: preview.batchId, action: 'commit' });
       toast.success(`${preview.validRows} rows imported successfully`);
+      setCommitted(res.data);
       setStatus('committed');
       setPreview(null);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Commit failed'); setStatus('previewed'); }
@@ -65,7 +75,7 @@ export default function ImportPage() {
   const handleDiscard = async () => {
     if (!preview) return;
     try {
-      await apiFetch('/api/v1/ops/import/commit', { method: 'POST', body: JSON.stringify({ batchId: preview.batchId, action: 'discard' }) });
+      await deskJson.post('/api/v1/ops/import/commit', { batchId: preview.batchId, action: 'discard' });
     } catch { /* silent — batch may expire anyway */ }
     setPreview(null);
     setStatus('idle');
@@ -90,11 +100,35 @@ export default function ImportPage() {
               <option value="canteen">Canteens</option>
               <option value="manufacturer">Manufacturers</option>
               <option value="product">Products</option>
+              <option value="address">Addresses</option>
+              <option value="price_list">Price Lists</option>
+              <option value="commission_rule">Commission Rules</option>
+              <option value="chain_lines">Chain Lines (into one chain)</option>
             </Select>
             <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
               <Download className="h-4 w-4 mr-1.5" /> Download Template
             </Button>
           </div>
+          {entity === 'chain_lines' && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Target chain *</label>
+              {/* Server-side search — a fixed-size list would hide chains past the first page. */}
+              <div className="max-w-md">
+                <EntityPicker
+                  endpoint="/api/v1/ops/chains"
+                  value={chainId}
+                  onChange={(id) => { setChainId(id); setPreview(null); setStatus('idle'); }}
+                  placeholder="Search by chain number or PO number…"
+                  labelKey="chainNumber"
+                  subLabelKey="sourcePoNumber"
+                  allowClear
+                  disabled={status === 'uploading' || status === 'committing'}
+                  extraQuery={{ linesEditable: 'true' }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Existing lines on the chosen chain are replaced by the rows in the file. Only chains whose lines are still editable can be selected.</p>
+            </div>
+          )}
         </div>
 
         {/* Step 2: Upload file */}
@@ -160,11 +194,37 @@ export default function ImportPage() {
           </div>
         )}
 
-        {status === 'committed' && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-            <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
-            <p className="font-medium text-green-900">Import complete</p>
-            <Button className="mt-4" variant="outline" size="sm" onClick={() => setStatus('idle')}>Import another file</Button>
+        {status === 'committed' && committed && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-6 space-y-4">
+            <div className="text-center">
+              <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
+              <p className="font-medium text-green-900">Import complete — {committed.createdCount} created, {committed.updatedCount} updated</p>
+            </div>
+            {committed.rowOutcomes && committed.rowOutcomes.length > 0 && (
+              <div className="overflow-x-auto max-h-64">
+                <table className="w-full text-xs border border-green-200 rounded-lg overflow-hidden bg-white">
+                  <thead className="bg-green-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-600">Row</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-600">Key</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-600">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {committed.rowOutcomes.map(o => (
+                      <tr key={o.rowNumber} className="border-t border-gray-100">
+                        <td className="px-3 py-1.5 text-gray-500">{o.rowNumber}</td>
+                        <td className="px-3 py-1.5 font-mono text-gray-700">{o.key}</td>
+                        <td className="px-3 py-1.5 text-green-700 capitalize">{o.action}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="text-center">
+              <Button variant="outline" size="sm" onClick={() => { setStatus('idle'); setCommitted(null); }}>Import another file</Button>
+            </div>
           </div>
         )}
       </div>

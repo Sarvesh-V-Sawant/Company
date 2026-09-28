@@ -43,6 +43,11 @@ const PriceListSchema = new Schema<IPriceList>(
 );
 
 PriceListSchema.index({ manufacturerId: 1, isActive: 1 });
+// Backs the import upsert's dedup key atomically — one price list per
+// manufacturer+canteen+start date. Missing canteenId is treated as one shared
+// value by Mongo's unique-index semantics, giving at most one manufacturer-wide
+// (no-canteen) list per effectiveFrom, which matches the intended dedup rule.
+PriceListSchema.index({ manufacturerId: 1, canteenId: 1, effectiveFrom: 1 }, { unique: true });
 PriceListSchema.index({ canteenId: 1, manufacturerId: 1 });
 
 export const PriceList =

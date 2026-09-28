@@ -1,18 +1,21 @@
 'use client';
-import AdminLayout from '@components/layout/AdminLayout';
-import ComingSoonCard from '@components/shared/ComingSoonCard';
+/**
+ * Transit — a stage view of the chain pipeline.
+ * All behaviour lives in the shared ChainBucketPage component so every stage
+ * inbox stays consistent.
+ */
+import { Truck } from 'lucide-react';
+import ChainBucketPage from '@components/desk/ChainBucketPage';
 
 export default function TransitPage() {
   return (
-    <AdminLayout breadcrumb={[{ label: 'Work Desk', href: '/desk' }, { label: 'Transit' }]}>
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-gray-900">Transit & Delivery</h1>
-        <ComingSoonCard
-          phase="Phase 30.07"
-          title="Transit Tracking"
-          description="Transporter, LR number, e-way bill, expected delivery, POD upload."
-        />
-      </div>
-    </AdminLayout>
+    <ChainBucketPage
+      title="Transit"
+      bucket="transit"
+      basePath="/desk/transit"
+      icon={Truck}
+      emptyTitle="Nothing in transit"
+      emptyDescription="Dispatched consignments appear here until delivery is recorded at the canteen."
+    />
   );
 }

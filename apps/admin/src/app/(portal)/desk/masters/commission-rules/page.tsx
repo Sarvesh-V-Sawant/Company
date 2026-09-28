@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Percent } from 'lucide-react';
+import { Plus, Percent, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import useSWR from 'swr';
@@ -16,6 +16,7 @@ import EmptyState from '@components/shared/EmptyState';
 import { TableSkeleton } from '@components/ui/skeleton';
 import EntityPicker from '@components/shared/EntityPicker';
 import { apiFetch } from '@lib/utils/api-client';
+import { deskJson } from '@lib/utils/desk-api';
 import { usePagination } from '@/hooks/usePagination';
 
 type CommScope = 'manufacturer' | 'product' | 'canteen';
@@ -31,6 +32,7 @@ interface CommissionRule {
 }
 interface ApiResp { success: boolean; data: CommissionRule[]; pagination: { page: number; limit: number; total: number; pages: number } }
 
+let _debounce: ReturnType<typeof setTimeout> | null = null;
 type ModalState = null | { mode: 'create' } | { mode: 'edit'; id: string };
 const emptyForm = { scope: 'manufacturer' as CommScope, scopeId: '', type: 'percentage' as CommType, value: '', effectiveFrom: '', effectiveTo: '', gstApplicable: false, sacCode: '', notes: '' };
 
@@ -53,9 +55,10 @@ export default function CommissionRulesPage() {
   const [saving, setSaving] = useState(false);
   const [loadingRecord, setLoadingRecord] = useState(false);
 
+  const search = params.get('search') ?? '';
   const scope  = params.get('scope') ?? '';
   const active = params.get('isActive') ?? '';
-  const query  = buildQuery({ scope: scope || undefined, isActive: active || undefined });
+  const query  = buildQuery({ search: search || undefined, scope: scope || undefined, isActive: active || undefined });
 
   const { data, isLoading, mutate } = useSWR<ApiResp>(`/api/v1/ops/commission-rules?${query}`, (url: string) => apiFetch<ApiResp>(url));
   const items = data?.data ?? [];
@@ -87,10 +90,10 @@ export default function CommissionRulesPage() {
     try {
       if (modal?.mode === 'create') {
         const body = { scope: form.scope, [`${form.scope}Id`]: form.scopeId, type: form.type, value: Number(form.value), effectiveFrom: form.effectiveFrom, effectiveTo: form.effectiveTo || undefined, gstApplicable: form.gstApplicable, sacCode: form.sacCode || undefined };
-        await apiFetch('/api/v1/ops/commission-rules', { method: 'POST', body: JSON.stringify(body) });
+        await deskJson.post('/api/v1/ops/commission-rules', body);
         toast.success('Commission rule created');
       } else if (modal?.mode === 'edit') {
-        await apiFetch(`/api/v1/ops/commission-rules/${modal.id}`, { method: 'PATCH', body: JSON.stringify({ value: Number(form.value), effectiveTo: form.effectiveTo || undefined, gstApplicable: form.gstApplicable, sacCode: form.sacCode || undefined }) });
+        await deskJson.patch(`/api/v1/ops/commission-rules/${modal.id}`, { value: Number(form.value), effectiveTo: form.effectiveTo || undefined, gstApplicable: form.gstApplicable, sacCode: form.sacCode || undefined });
         toast.success('Commission rule updated');
       }
       setModal(null);
@@ -102,10 +105,10 @@ export default function CommissionRulesPage() {
 
   const toggleStatus = async (r: CommissionRule) => {
     try {
-      await apiFetch(`/api/v1/ops/commission-rules/${r._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !r.isActive }) });
+      await deskJson.patch(`/api/v1/ops/commission-rules/${r._id}/status`, { isActive: !r.isActive });
       toast.success(`Rule ${!r.isActive ? 'activated' : 'deactivated'}`);
       mutate();
-    } catch { toast.error('Status update failed'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Status update failed'); }
   };
 
   const fmt = (d: string) => { try { return format(new Date(d), 'dd MMM yyyy'); } catch { return d; } };
@@ -118,7 +121,12 @@ export default function CommissionRulesPage() {
           <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1.5" /> Add Rule</Button>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input className="pl-8" placeholder="Search manufacturer, product or canteen…" defaultValue={search}
+              onChange={e => { if (_debounce) clearTimeout(_debounce); _debounce = setTimeout(() => updateParam('search', e.target.value), 400); }} />
+          </div>
           <Select value={scope} onChange={e => updateParam('scope', e.target.value)} className="w-40">
             <option value="">All Scopes</option>
             <option value="manufacturer">Manufacturer</option>
@@ -144,7 +152,7 @@ export default function CommissionRulesPage() {
             {isLoading ? <TableSkeleton rows={8} cols={9} /> : items.length === 0 ? (
               <tbody><tr><td colSpan={9}>
                 <EmptyState icon={Percent} title="No commission rules found" action={{ label: 'Add Rule', onClick: openCreate }}
-                  filtered={!!(scope || active)} onClearFilters={() => router.push('/desk/masters/commission-rules')} />
+                  filtered={!!(search || scope || active)} onClearFilters={() => router.push('/desk/masters/commission-rules')} />
               </td></tr></tbody>
             ) : (
               <tbody>

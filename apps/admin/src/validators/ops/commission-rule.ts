@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { OpsListQuerySchema, MongoIdSchema } from './shared';
+import { OpsListQuerySchema, MongoIdSchema, DateInputSchema, RateSchema, dateRangeOk, optionalText } from './shared';
+
+/** SAC codes are 4–8 digits. '' is allowed so a form can clear the field. */
+const SacSchema = z.string().trim().refine((v) => v === '' || /^\d{4,8}$/.test(v), 'SAC code must be 4–8 digits').optional();
 
 export const CreateCommissionRuleSchema = z.object({
   scope:          z.enum(['manufacturer', 'product', 'canteen']),
@@ -7,13 +10,13 @@ export const CreateCommissionRuleSchema = z.object({
   productId:      MongoIdSchema.optional(),
   canteenId:      MongoIdSchema.optional(),
   type:           z.enum(['percentage', 'perUnit', 'flat']),
-  value:          z.number().min(0),
-  effectiveFrom:  z.string().datetime({ offset: false }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
-  effectiveTo:    z.string().datetime({ offset: false }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  value:          RateSchema,
+  effectiveFrom:  DateInputSchema,
+  effectiveTo:    DateInputSchema.optional(),
   gstApplicable:  z.boolean().optional(),
-  sacCode:        z.string().max(8).optional(),
-  notes:          z.string().max(500).optional(),
-}).refine(
+  sacCode:        SacSchema,
+  notes:          optionalText(500),
+}).refine(dateRangeOk, { message: 'effectiveTo cannot be before effectiveFrom', path: ['effectiveTo'] }).refine(
   (d) => !(d.type === 'percentage' && d.value > 100),
   { message: 'Percentage value must be between 0 and 100', path: ['value'] },
 ).refine(
@@ -27,11 +30,11 @@ export const CreateCommissionRuleSchema = z.object({
 );
 
 export const UpdateCommissionRuleSchema = z.object({
-  value:         z.number().min(0).optional(),
-  effectiveTo:   z.string().datetime({ offset: false }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  value:         RateSchema.optional(),
+  effectiveTo:   DateInputSchema.optional(),
   gstApplicable: z.boolean().optional(),
-  sacCode:       z.string().max(8).optional(),
-  notes:         z.string().max(500).optional(),
+  sacCode:       SacSchema,
+  notes:         optionalText(500),
 }).refine((d) => Object.values(d).some((v) => v !== undefined), {
   message: 'At least one field must be provided',
 });

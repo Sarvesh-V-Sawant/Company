@@ -80,7 +80,7 @@ export const CreateChainSchema = z.object({
   originCanteenId: MongoIdSchema.optional(),
   shipToAddressId: MongoIdSchema.optional(),
   billToAddressId: MongoIdSchema.optional(),
-  sourcePoNumber: z.string().max(60).optional(),
+  sourcePoNumber: z.string().trim().max(60).optional(),
   sourcePoDate: OptionalDateSchema,
   assignedTo: MongoIdSchema.optional(),
   lines: z.array(ChainLineInputSchema).max(500).optional(),
@@ -89,7 +89,7 @@ export const CreateChainSchema = z.object({
 export const UpdateChainSchema = z.object({
   shipToAddressId: MongoIdSchema.optional(),
   billToAddressId: MongoIdSchema.optional(),
-  sourcePoNumber: z.string().max(60).optional(),
+  sourcePoNumber: z.string().trim().max(60).optional(),
   sourcePoDate: OptionalDateSchema,
   originCanteenId: MongoIdSchema.optional(),
 }).refine((d) => Object.values(d).some((v) => v !== undefined), {
@@ -104,6 +104,9 @@ export const ListChainsSchema = OpsListQuerySchema.extend({
   /** Convenience buckets used by the PO/Invoice/SO/Transit/Payment inbox pages. */
   bucket: z.enum(['po', 'altered', 'taxInvoice', 'portal', 'so', 'transit', 'payment', 'commission', 'open', 'closed']).optional(),
   onHold: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  /** Server-side filter for pickers (e.g. the chain-lines import target): only chains whose
+   * lines can still be replaced. Mirrors ChainService.linesEditable. */
+  linesEditable: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   fromDate: OptionalDateSchema,
   toDate: OptionalDateSchema,
 });

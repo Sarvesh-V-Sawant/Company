@@ -2,8 +2,12 @@ import mongoose from 'mongoose';
 import { connectDB } from '@lib/db/connect';
 import { AppError } from '@services/AuthService';
 import { Canteen, type ICanteen } from '@models/ops/Canteen';
+import { Chain } from '@models/ops/Chain';
+import { TERMINAL_STATUSES } from '@services/ops/ChainService';
 import { AuditLog } from '@models/AuditLog';
 import { calcSkip } from '@lib/utils/pagination';
+import { escapeRegExp } from '@lib/utils/regex';
+import { withDuplicateGuard } from '@lib/utils/ops-guards';
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
@@ -22,7 +26,7 @@ export class CanteenService {
     await connectDB();
     const filter: Record<string, unknown> = {};
     if (params.search) {
-      const re = new RegExp(params.search, 'i');
+      const re = new RegExp(escapeRegExp(params.search), 'i');
       filter.$or = [{ code: re }, { name: re }];
     }
     if (params.type) filter.type = params.type;
@@ -79,7 +83,7 @@ export class CanteenService {
     assertGstin(data.gstin);
 
     const codeUpper = data.code.toUpperCase();
-    const existing = await Canteen.findOne({ code: { $regex: new RegExp(`^${codeUpper}$`, 'i') } }).lean();
+    const existing = await Canteen.findOne({ code: { $regex: new RegExp(`^${escapeRegExp(codeUpper)}$`, 'i') } }).lean();
     if (existing) throw new AppError('OPS_004', 409, `Canteen code "${codeUpper}" already exists.`);
 
     if (data.type === 'subsidiary') {
@@ -90,13 +94,17 @@ export class CanteenService {
     }
 
     const actorOid = new mongoose.Types.ObjectId(actorId);
-    const canteen = await Canteen.create({
-      ...data,
-      code: codeUpper,
-      parentCanteenId: data.parentCanteenId ? new mongoose.Types.ObjectId(data.parentCanteenId) : undefined,
-      createdBy: actorOid,
-      updatedBy: actorOid,
-    });
+    const canteen = await withDuplicateGuard(
+      () => Canteen.create({
+        ...data,
+        code: codeUpper,
+        parentCanteenId: data.parentCanteenId ? new mongoose.Types.ObjectId(data.parentCanteenId) : undefined,
+        createdBy: actorOid,
+        updatedBy: actorOid,
+      }),
+      'OPS_004',
+      `Canteen code "${codeUpper}" already exists.`,
+    );
 
     await AuditLog.create({ performedBy: actorOid, action: 'ops.canteen.create', targetType: 'Canteen', targetId: String(canteen._id) });
     return canteen.toObject();
@@ -132,6 +140,20 @@ export class CanteenService {
       const activeSubCount = await Canteen.countDocuments({ parentCanteenId: canteen._id, isActive: true });
       if (activeSubCount > 0) {
         throw new AppError('OPS_008', 409, `Cannot deactivate main canteen: it has ${activeSubCount} active subsidiary canteen(s). Deactivate them first.`);
+      }
+    }
+
+    if (!isActive) {
+      const openChains = await Chain.countDocuments({
+        canteenId: id,
+        status: { $nin: TERMINAL_STATUSES },
+      });
+      if (openChains > 0) {
+        throw new AppError(
+          'OPS_063',
+          409,
+          `Cannot deactivate — ${openChains} chain(s) referencing this canteen are still open. Close or cancel them first.`,
+        );
       }
     }
 

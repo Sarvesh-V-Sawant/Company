@@ -20,13 +20,13 @@ import { ChainService, round2, type ChainActor } from '@services/ops/ChainServic
 import type { ChainStatus } from '@services/ops/ChainStatusMachine';
 
 /**
- * Statuses from which a tax invoice may be recorded. This always advances the
- * chain to TAX_INVOICE_RECEIVED, which per the status machine is only a legal
- * target from AWAITING_TAX_INVOICE — SENT_TO_MANUFACTURER must pass through
- * that waiting state first (an explicit PATCH /status hop), or this throws
- * OPS_032 instead of the intended OPS_048.
+ * Statuses from which a tax invoice may be recorded. TAX_INVOICE_RECEIVED is
+ * only a legal machine target from AWAITING_TAX_INVOICE, so recording from
+ * SENT_TO_MANUFACTURER absorbs the SENT_TO_MANUFACTURER -> AWAITING_TAX_INVOICE
+ * hop first (each hop still goes through ChainService.changeStatus, i.e.
+ * canTransition() — no edge is ever skipped or hardcoded).
  */
-const TAX_INVOICE_FROM: ChainStatus[] = ['AWAITING_TAX_INVOICE'];
+const TAX_INVOICE_FROM: ChainStatus[] = ['SENT_TO_MANUFACTURER', 'AWAITING_TAX_INVOICE'];
 
 async function logEvent(
   chain: IChain,
@@ -76,6 +76,19 @@ export class ChainLifecycleService {
         'OPS_048',
         409,
         `A tax invoice can only be recorded once the order has been sent to the manufacturer. Current status: ${status}.`,
+      );
+    }
+
+    // Absorb the SENT_TO_MANUFACTURER -> AWAITING_TAX_INVOICE hop as a real,
+    // separately-logged transition (not a silent skip) before recording the
+    // invoice. changeStatus() re-validates via canTransition() itself, so an
+    // illegal edge still throws the coded OPS_032, never a raw Error.
+    if (status === 'SENT_TO_MANUFACTURER') {
+      await ChainService.changeStatus(
+        chainId,
+        'AWAITING_TAX_INVOICE',
+        actor,
+        'Awaiting tax invoice from manufacturer',
       );
     }
 

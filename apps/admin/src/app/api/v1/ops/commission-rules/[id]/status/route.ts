@@ -6,6 +6,7 @@ import { AppError } from '@services/AuthService';
 import { getAuthUser, AuthError } from '@mw/requireAuth';
 import { assertRole } from '@mw/requireRole';
 import { success, apiError } from '@lib/utils/api-response';
+import { zodMessage } from '@lib/utils/ops-guards';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function PATCH(
 
   let parsed;
   try { parsed = CommissionRuleStatusSchema.parse(body); }
-  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', 'Validation failed.', 400); throw err; }
+  catch (err) { if (err instanceof ZodError) return apiError('GEN_001', zodMessage(err), 400); throw err; }
 
   try {
     await CommissionRuleService.setStatus(id, parsed.isActive, payload.userId);
